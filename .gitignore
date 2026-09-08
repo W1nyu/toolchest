@@ -6,8 +6,6 @@ venv/
 build/
 dist/
 *.spec
-node_modules/
-.wrangler/
 
 # Conversion outputs
 converted/

@@ -1,14 +1,21 @@
 # Toolchest
 
-작업에 바로 쓸 수 있는 작은 도구 모음입니다.
+다운로드 후 내 PC에서 바로 실행하는 두 가지 변환 도구 모음입니다. 변환 대상 파일이나 웹페이지 본문을 외부 변환 서버에 업로드하지 않습니다.
 
-## 도구
+| 도구 | 하는 일 | 시작하기 |
+| --- | --- | --- |
+| [fileConverter](./fileConverter/) | 미디어·문서 파일을 원하는 형식으로 변환 | Windows에서 [로컬_변환기_실행.bat](./fileConverter/%EB%A1%9C%EC%BB%AC_%EB%B3%80%ED%99%98%EA%B8%B0_%EC%8B%A4%ED%96%89.bat)를 더블클릭 |
+| [articleConverter](./articleConverter/) | 공개 웹페이지에서 본문과 본문 이미지만 추려 PDF 저장 | Windows에서 [articleConverter_실행.bat](./articleConverter/articleConverter_%EC%8B%A4%ED%96%89.bat)를 더블클릭 |
 
-- [fileConverter](./fileConverter/): PC에서 파일을 변환하는 Python 데스크톱 도구
-- [articleConverter](./articleConverter/): 웹페이지 주소를 입력해 본문과 본문 이미지를 PDF로 저장하는 GitHub Pages 웹 도구
+각 도구의 설치, 사용 예시, 지원 범위와 문제 해결 방법은 아래 HTML 가이드에서 확인할 수 있습니다.
 
-## articleConverter 배포
+- [fileConverter 상세 가이드](./fileConverter/GUIDE.html)
+- [articleConverter 상세 가이드](./articleConverter/GUIDE.html)
 
-`main` 브랜치에 푸시하면 GitHub Actions가 `articleConverter/`를 GitHub Pages로 배포합니다. 저장소의 **Settings > Pages**에서 Source를 **GitHub Actions**로 한 번 선택하세요.
+## 공통 준비
 
-정적 GitHub Pages는 다른 사이트의 HTML을 직접 읽을 수 없으므로, articleConverter는 별도의 Cloudflare Worker가 본문을 렌더링·추출합니다. Worker 배포 주소를 GitHub repository variable `ARTICLE_CONVERTER_API_URL`로 설정하면 방문자는 URL만 입력하면 됩니다. 로그인, 유료벽, 캡차, 자동화 차단 페이지는 변환하지 못할 수 있으며, 원문과 이미지의 이용 조건은 사용자가 확인해야 합니다.
+1. 이 저장소를 ZIP으로 내려받아 압축을 풉니다. 또는 Git으로 복제합니다.
+2. Windows에서는 Python 3.10 이상을 설치할 때 Add Python to PATH를 선택합니다.
+3. 각 도구 폴더의 README와 GUIDE.html에 적힌 준비 과정을 한 번만 진행합니다.
+
+이 저장소는 GitHub Pages, Cloudflare Worker 등 웹 배포 구성을 사용하지 않습니다. 모든 실행은 내려받은 PC에서 이뤄집니다.
