@@ -1,0 +1,42 @@
+name: Deploy articleConverter to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "articleConverter/**"
+      - ".github/workflows/deploy-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Set Worker API address
+        env:
+          ARTICLE_CONVERTER_API_URL: ${{ vars.ARTICLE_CONVERTER_API_URL }}
+        run: |
+          printf 'window.ARTICLE_CONVERTER_API_URL = "%s";\n' "$ARTICLE_CONVERTER_API_URL" > articleConverter/config.js
+      - name: Upload articleConverter
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: "./articleConverter"
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
