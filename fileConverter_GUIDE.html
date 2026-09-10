@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>fileConverter 사용 가이드</title>
+  <style>
+    :root { color-scheme: light; --blue:#0066cc; --blue-dark:#0071e3; --ink:#1d1d1f; --muted:#6e6e73; --paper:#f5f5f7; --line:#e0e0e0; --tile:#272729; --tile2:#2a2a2c; }
+    * { box-sizing:border-box; }
+    html { scroll-behavior:smooth; }
+    body { margin:0; color:var(--ink); background:#fff; font-family:"SF Pro Text","Apple SD Gothic Neo",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; font-size:17px; line-height:1.47; letter-spacing:-.22px; }
+    a { color:var(--blue); text-decoration:none; } a:hover { text-decoration:underline; }
+    .global-nav { height:44px; background:#000; color:#fff; display:flex; align-items:center; padding:0 max(24px,calc((100vw - 980px)/2)); font-size:12px; letter-spacing:-.12px; }
+    .global-nav a { color:#fff; margin-right:22px; } .global-nav strong { margin-left:auto; font-weight:400; }
+    .sub-nav { min-height:54px; display:flex; align-items:center; justify-content:space-between; padding:0 max(24px,calc((100vw - 980px)/2)); background:rgba(245,245,247,.86); border-bottom:1px solid rgba(0,0,0,.08); backdrop-filter:saturate(180%) blur(20px); position:sticky; top:0; z-index:2; }
+    .sub-nav b { font-size:21px; line-height:1.19; letter-spacing:.1px; } .pill { display:inline-block; padding:10px 19px; border-radius:999px; background:var(--blue); color:white; font-size:15px; } .pill:active { transform:scale(.95); } .pill:hover { color:#fff; text-decoration:none; background:var(--blue-dark); }
+    .hero, .tile { padding:80px 24px; text-align:center; } .hero { background:#fff; } .tile { background:var(--paper); } .tile.dark { background:var(--tile); color:#fff; } .tile.dark2 { background:var(--tile2); color:#fff; }
+    .inner { width:min(980px,100%); margin:0 auto; } h1,h2,h3,p { margin-top:0; } h1 { font-family:"SF Pro Display","Apple SD Gothic Neo",system-ui,sans-serif; font-size:clamp(38px,6vw,56px); line-height:1.07; letter-spacing:-.5px; font-weight:600; margin-bottom:18px; } h2 { font-family:"SF Pro Display","Apple SD Gothic Neo",system-ui,sans-serif; font-size:clamp(30px,4vw,40px); line-height:1.1; font-weight:600; letter-spacing:-.35px; margin-bottom:18px; } h3 { font-size:21px; line-height:1.19; font-weight:600; margin-bottom:8px; } .lead { max-width:700px; margin:0 auto 24px; font-size:24px; line-height:1.5; font-weight:300; letter-spacing:0; } .kicker { margin-bottom:12px; color:var(--blue); font-size:14px; font-weight:600; letter-spacing:-.15px; }
+    .steps { display:grid; grid-template-columns:repeat(3,1fr); gap:20px; text-align:left; margin-top:42px; } .card { background:#fff; color:var(--ink); border:1px solid var(--line); border-radius:18px; padding:24px; } .number { display:block; color:var(--blue); font-size:14px; font-weight:600; margin-bottom:16px; } .card p:last-child { margin-bottom:0; }
+    .guide { width:min(980px,100%); margin:0 auto; text-align:left; } .guide-grid { display:grid; grid-template-columns:1fr 1fr; gap:24px; } .rule { border-top:1px solid var(--line); padding:24px 0; } .rule p:last-child { margin-bottom:0; } code { display:block; overflow-x:auto; margin:14px 0 0; padding:16px; background:#fff; color:#1d1d1f; border:1px solid var(--line); border-radius:11px; font-family:ui-monospace,SFMono-Regular,Consolas,monospace; font-size:14px; line-height:1.55; letter-spacing:0; white-space:pre; } .dark code { background:#1d1d1f; color:#fff; border-color:#3d3d40; } ul,ol { margin:10px 0 0; padding-left:22px; } li { margin:7px 0; }
+    .table-wrap { overflow-x:auto; } table { width:100%; border-collapse:collapse; text-align:left; background:#fff; color:var(--ink); border:1px solid var(--line); border-radius:18px; overflow:hidden; } th,td { padding:15px 16px; border-bottom:1px solid var(--line); vertical-align:top; } th { font-size:14px; font-weight:600; background:#fafafc; } tr:last-child td { border-bottom:0; }
+    .note { font-size:14px; color:var(--muted); margin-top:18px; } .dark .note { color:#ccc; } footer { background:var(--paper); padding:64px 24px; color:#6e6e73; font-size:12px; line-height:1.45; } footer .inner { border-top:1px solid #d2d2d7; padding-top:18px; }
+    @media (max-width:700px) { .hero,.tile { padding:48px 20px; } .steps,.guide-grid { grid-template-columns:1fr; } .global-nav,.sub-nav { padding-left:20px; padding-right:20px; } .global-nav strong { display:none; } .lead { font-size:20px; } }
+  </style>
+</head>
+<body>
+  <nav class="global-nav"><a href="./README.md">Toolchest</a><a href="./articleConverter_GUIDE.html">Article Converter</a><a href="./imageConverter_GUIDE.html">Image Converter</a><strong>Local tools. No upload.</strong></nav>
+  <nav class="sub-nav"><b>fileConverter</b><a class="pill" href="#start">바로 시작하기</a></nav>
+
+  <header class="hero">
+    <div class="inner">
+      <p class="kicker">LOCAL FILE CONVERTER</p>
+      <h1>파일은 내 PC에서.<br>형식만 가볍게 바꿉니다.</h1>
+      <p class="lead">미디어, Office 문서, PDF를 필요한 형식으로 변환하는 Windows용 로컬 도구입니다. 입력 파일은 외부 서버로 전송되지 않습니다.</p>
+      <a class="pill" href="#start">설치 및 실행 보기</a>
+    </div>
+  </header>
+
+  <section id="start" class="tile">
+    <div class="inner">
+      <p class="kicker">THREE STEPS</p>
+      <h2>처음 한 번만 준비하세요.</h2>
+      <div class="steps">
+        <article class="card"><span class="number">01</span><h3>Python 설치</h3><p>Python 3.10 이상을 설치합니다. 설치 화면에서 <b>Add Python to PATH</b>를 선택하세요.</p></article>
+        <article class="card"><span class="number">02</span><h3>변환 엔진 설치</h3><p>필요한 변환 종류에 맞게 FFmpeg, LibreOffice, Ghostscript 또는 Poppler를 설치합니다.</p></article>
+        <article class="card"><span class="number">03</span><h3>도구 실행</h3><p>로컬_변환기_실행.bat를 더블클릭합니다. 또는 이 폴더에서 Python 명령으로 GUI를 엽니다.</p></article>
+      </div>
+      <p class="note">이 도구는 별도 Python 패키지 설치가 필요하지 않습니다. 변환에 필요한 외부 프로그램만 준비하면 됩니다.</p>
+    </div>
+  </section>
+
+  <section class="tile dark">
+    <div class="guide">
+      <p class="kicker" style="color:#2997ff">DESKTOP APP</p>
+      <h2>화면에서 바로 변환.</h2>
+      <p class="lead">파일 선택, 변환 형식, 출력 폴더를 정한 뒤 변환 시작을 누르세요. 목록에 없는 형식도 직접 입력할 수 있으며, 실제 지원 여부는 FFmpeg가 결정합니다.</p>
+      <code>로컬_변환기_실행.bat
+
+또는
+
+python converter_gui.py</code>
+      <div class="guide-grid" style="margin-top:42px">
+        <div><h3>기본 흐름</h3><ol><li>변환할 파일을 선택합니다.</li><li>mp3, mp4, pdf, jpg 등 목표 확장자를 선택하거나 직접 입력합니다.</li><li>필요하면 출력 폴더와 덮어쓰기·압축 옵션을 정합니다.</li><li>변환 시작을 눌러 결과 경로를 확인합니다.</li></ol></div>
+        <div><h3>알아둘 점</h3><ul><li>같은 이름의 결과가 있으면 기본으로 중단됩니다.</li><li>덮어쓰기를 선택하면 기존 결과 파일을 교체합니다.</li><li>진행 중에도 창은 응답하며, 완료 후 결과 경로가 표시됩니다.</li></ul></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="tile">
+    <div class="guide">
+      <p class="kicker">WHAT YOU CAN CONVERT</p>
+      <h2>형식에 맞는 엔진을 사용합니다.</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>대상</th><th>가능한 작업</th><th>필요한 프로그램</th></tr></thead>
+          <tbody>
+            <tr><td>오디오·영상</td><td>FFmpeg가 읽고 쓸 수 있는 형식 사이의 변환. 예: MP4 → MP3, WAV → M4A.</td><td><a href="https://ffmpeg.org/download.html">FFmpeg</a></td></tr>
+            <tr><td>Office 문서</td><td>DOC/DOCX, PPT/PPTX, XLS/XLSX, ODT/ODP/ODS, RTF/CSV → PDF.</td><td><a href="https://www.libreoffice.org/download/download/">LibreOffice</a></td></tr>
+            <tr><td>PDF 용량 줄이기</td><td>screen(작은 용량), ebook(균형), printer(고품질) 중 하나를 선택.</td><td><a href="https://ghostscript.com/releases/">Ghostscript</a></td></tr>
+            <tr><td>PDF → 이미지</td><td>모든 페이지를 JPG 또는 PNG로 저장. 기본 해상도는 150 DPI.</td><td><a href="https://github.com/oschwartz10612/poppler-windows/releases/">Poppler</a></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note">Office 원본 내부 이미지를 다시 압축하는 기능은 레이아웃 손상 위험 때문에 제공하지 않습니다. Office 문서를 PDF로 바꾼 뒤 PDF 압축을 적용할 수 있습니다.</p>
+    </div>
+  </section>
+
+  <section class="tile dark2">
+    <div class="guide">
+      <p class="kicker" style="color:#2997ff">COMMAND LINE</p>
+      <h2>터미널에서도 정확하게.</h2>
+      <div class="rule"><h3>미디어 변환</h3><code>python local_converter.py video.mp4 --to mp3
+python local_converter.py recording.wav --to m4a --output-dir converted</code></div>
+      <div class="rule"><h3>Office 문서 → PDF</h3><code>python local_converter.py slides.pptx --to pdf --output-dir converted
+python local_converter.py report.docx --to pdf --overwrite</code></div>
+      <div class="rule"><h3>PDF 압축과 이미지 저장</h3><code>python local_converter.py report.pdf --to pdf --compress --quality ebook --overwrite
+python local_converter.py manual.pdf --to jpg --output-dir images --dpi 200</code></div>
+      <p class="note">--overwrite는 기존 결과를 교체하고, --output-dir은 결과 폴더를 지정합니다. PDF → 이미지 변환에서 --dpi는 30 이상이어야 합니다.</p>
+    </div>
+  </section>
+
+  <section class="tile">
+    <div class="guide">
+      <p class="kicker">TROUBLESHOOTING</p>
+      <h2>막히는 지점을 빠르게 찾기.</h2>
+      <div class="rule"><h3>“FFmpeg was not found”가 표시됩니다.</h3><p>FFmpeg를 설치한 뒤 PATH에 추가하고 새 PowerShell 또는 명령 프롬프트를 여세요. 명령 창에서 <code>ffmpeg -version</code>이 실행되는지 확인합니다.</p></div>
+      <div class="rule"><h3>Office PDF 변환이 시작되지 않습니다.</h3><p>LibreOffice를 설치하세요. 프로그램은 PATH와 기본 Windows 설치 경로를 자동으로 확인합니다. 이미 설치했다면 프로그램을 완전히 종료한 뒤 다시 시도하세요.</p></div>
+      <div class="rule"><h3>PDF 압축 또는 PDF → 이미지가 실패합니다.</h3><p>압축에는 Ghostscript, 이미지 저장에는 Poppler가 각각 필요합니다. 설치 후 실행 파일 폴더를 PATH에 추가하고 새 터미널에서 다시 실행하세요.</p></div>
+      <div class="rule"><h3>결과 파일이 이미 있다고 나옵니다.</h3><p>다른 출력 폴더를 선택하거나 GUI의 덮어쓰기 옵션, 명령줄의 --overwrite를 사용하세요.</p></div>
+    </div>
+  </section>
+
+  <footer><div class="inner">fileConverter · Local conversion only · <a href="./README.md">README 열기</a> · <a href="./articleConverter_GUIDE.html">Article Converter 가이드</a> · <a href="./imageConverter_GUIDE.html">Image Converter 가이드</a></div></footer>
+</body>
+</html>

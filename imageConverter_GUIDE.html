@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>imageConverter 사용 가이드</title>
+  <style>
+    :root { color-scheme: light; --blue:#0066cc; --blue-dark:#0071e3; --ink:#1d1d1f; --muted:#6e6e73; --paper:#f5f5f7; --line:#e0e0e0; --tile:#272729; --tile2:#2a2a2c; }
+    * { box-sizing:border-box; }
+    html { scroll-behavior:smooth; }
+    body { margin:0; color:var(--ink); background:#fff; font-family:"SF Pro Text","Apple SD Gothic Neo",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; font-size:17px; line-height:1.47; letter-spacing:-.22px; }
+    a { color:var(--blue); text-decoration:none; } a:hover { text-decoration:underline; }
+    .global-nav { height:44px; background:#000; color:#fff; display:flex; align-items:center; padding:0 max(24px,calc((100vw - 980px)/2)); font-size:12px; letter-spacing:-.12px; }
+    .global-nav a { color:#fff; margin-right:22px; } .global-nav strong { margin-left:auto; font-weight:400; }
+    .sub-nav { min-height:54px; display:flex; align-items:center; justify-content:space-between; padding:0 max(24px,calc((100vw - 980px)/2)); background:rgba(245,245,247,.86); border-bottom:1px solid rgba(0,0,0,.08); backdrop-filter:saturate(180%) blur(20px); position:sticky; top:0; z-index:2; }
+    .sub-nav b { font-size:21px; line-height:1.19; letter-spacing:.1px; } .pill { display:inline-block; padding:10px 19px; border-radius:999px; background:var(--blue); color:white; font-size:15px; } .pill:active { transform:scale(.95); } .pill:hover { color:#fff; text-decoration:none; background:var(--blue-dark); }
+    .hero, .tile { padding:80px 24px; text-align:center; } .hero { background:#fff; } .tile { background:var(--paper); } .tile.dark { background:var(--tile); color:#fff; } .tile.dark2 { background:var(--tile2); color:#fff; }
+    .inner { width:min(980px,100%); margin:0 auto; } h1,h2,h3,p { margin-top:0; } h1 { font-family:"SF Pro Display","Apple SD Gothic Neo",system-ui,sans-serif; font-size:clamp(38px,6vw,56px); line-height:1.07; letter-spacing:-.5px; font-weight:600; margin-bottom:18px; } h2 { font-family:"SF Pro Display","Apple SD Gothic Neo",system-ui,sans-serif; font-size:clamp(30px,4vw,40px); line-height:1.1; font-weight:600; letter-spacing:-.35px; margin-bottom:18px; } h3 { font-size:21px; line-height:1.19; font-weight:600; margin-bottom:8px; } .lead { max-width:700px; margin:0 auto 24px; font-size:24px; line-height:1.5; font-weight:300; letter-spacing:0; } .kicker { margin-bottom:12px; color:var(--blue); font-size:14px; font-weight:600; letter-spacing:-.15px; }
+    .steps { display:grid; grid-template-columns:repeat(3,1fr); gap:20px; text-align:left; margin-top:42px; } .card { background:#fff; color:var(--ink); border:1px solid var(--line); border-radius:18px; padding:24px; } .number { display:block; color:var(--blue); font-size:14px; font-weight:600; margin-bottom:16px; } .card p:last-child { margin-bottom:0; }
+    .guide { width:min(980px,100%); margin:0 auto; text-align:left; } .guide-grid { display:grid; grid-template-columns:1fr 1fr; gap:24px; } .rule { border-top:1px solid var(--line); padding:24px 0; } .rule p:last-child { margin-bottom:0; } code { display:block; overflow-x:auto; margin:14px 0 0; padding:16px; background:#fff; color:#1d1d1f; border:1px solid var(--line); border-radius:11px; font-family:ui-monospace,SFMono-Regular,Consolas,monospace; font-size:14px; line-height:1.55; letter-spacing:0; white-space:pre; } .dark code { background:#1d1d1f; color:#fff; border-color:#3d3d40; } ul,ol { margin:10px 0 0; padding-left:22px; } li { margin:7px 0; }
+    .table-wrap { overflow-x:auto; } table { width:100%; border-collapse:collapse; text-align:left; background:#fff; color:var(--ink); border:1px solid var(--line); border-radius:18px; overflow:hidden; } th,td { padding:15px 16px; border-bottom:1px solid var(--line); vertical-align:top; } th { font-size:14px; font-weight:600; background:#fafafc; } tr:last-child td { border-bottom:0; }
+    .note { font-size:14px; color:var(--muted); margin-top:18px; } .dark .note { color:#ccc; } footer { background:var(--paper); padding:64px 24px; color:#6e6e73; font-size:12px; line-height:1.45; } footer .inner { border-top:1px solid #d2d2d7; padding-top:18px; }
+    @media (max-width:700px) { .hero,.tile { padding:48px 20px; } .steps,.guide-grid { grid-template-columns:1fr; } .global-nav,.sub-nav { padding-left:20px; padding-right:20px; } .global-nav strong { display:none; } .lead { font-size:20px; } }
+  </style>
+</head>
+<body>
+  <nav class="global-nav"><a href="./README.md">Toolchest</a><a href="./fileConverter_GUIDE.html">File Converter</a><a href="./articleConverter_GUIDE.html">Article Converter</a><strong>Local tools. No upload.</strong></nav>
+  <nav class="sub-nav"><b>imageConverter</b><a class="pill" href="#start">바로 시작하기</a></nav>
+
+  <header class="hero">
+    <div class="inner">
+      <p class="kicker">LOCAL IMAGE TO TEXT</p>
+      <h1>사진 속 글자를,<br>내 PC에서 바로 텍스트로.</h1>
+      <p class="lead">화면 캡처나 사진 속 문서를 Windows 내장 인식기로 읽어 편집 가능한 텍스트, 또는 원본을 그대로 보여주는 검색 가능한 PDF로 저장하는 로컬 도구입니다. 이미지는 외부로 전송되지 않습니다.</p>
+      <a class="pill" href="#start">설치 및 실행 보기</a>
+    </div>
+  </header>
+
+  <section id="start" class="tile">
+    <div class="inner">
+      <p class="kicker">THREE STEPS</p>
+      <h2>따로 설치할 것이 거의 없습니다.</h2>
+      <div class="steps">
+        <article class="card"><span class="number">01</span><h3>Python 설치</h3><p>Python 3.10 이상을 설치합니다. 설치 화면에서 <b>Add Python to PATH</b>를 선택하세요.</p></article>
+        <article class="card"><span class="number">02</span><h3>한국어 인식기 확인</h3><p>대부분의 Windows 11에는 기본으로 들어 있습니다. 없다면 설정 → 시간 및 언어 → 언어 및 지역 → 한국어의 언어 옵션에서 <b>광학 문자 인식</b>을 설치하세요.</p></article>
+        <article class="card"><span class="number">03</span><h3>앱 실행</h3><p>로컬_변환기_실행.bat를 더블클릭한 뒤 <b>이미지 텍스트</b> 탭을 엽니다. 별도 실행 파일은 없습니다.</p></article>
+      </div>
+      <p class="note">이 기능은 Windows 내장 OCR(Windows.Media.Ocr)만 사용합니다. 별도 Python 패키지 설치, 계정 등록, API 키가 필요 없습니다.</p>
+    </div>
+  </section>
+
+  <section class="tile dark">
+    <div class="guide">
+      <p class="kicker" style="color:#2997ff">DESKTOP APP</p>
+      <h2>넣고, 추출하고, 고치고, 저장까지 한 화면에서.</h2>
+      <p class="lead">파일 변환기와 같은 앱의 <b>이미지 텍스트</b> 탭입니다. 이미지를 불러오면 미리보기와 함께 <b>파일명 · 너비×높이</b>가 표시되고, 텍스트 추출 뒤에는 결과를 직접 고칠 수 있는 편집창이 열립니다.</p>
+      <code>로컬_변환기_실행.bat
+
+또는
+
+python converter_gui.py</code>
+      <div class="guide-grid" style="margin-top:42px">
+        <div><h3>기본 흐름</h3><ol><li><b>이미지 텍스트</b> 탭을 엽니다.</li><li><b>이미지 불러오기</b>를 누르거나, 편집창 밖에 커서를 둔 채 <b>Ctrl+V</b>로 복사한 이미지를 붙여넣습니다.</li><li><b>텍스트 추출</b>을 눌러 인식을 시작합니다.</li><li>편집창에서 오타를 고칩니다.</li><li><b>전체 복사</b>, <b>.txt 저장</b>, <b>.md 저장</b>, <b>PDF 저장</b> 중 필요한 방식을 선택합니다.</li></ol></div>
+        <div><h3>알아둘 점</h3><ul><li>Ctrl+V는 편집창 밖에 초점이 있을 때만 이미지를 붙여넣습니다. 편집창 안에서는 평범한 텍스트 붙여넣기로 동작합니다.</li><li>표처럼 배치된 내용은 같은 줄로 인식된 항목이 탭으로 구분되어 나오므로, 엑셀이나 노션에 그대로 붙여넣으면 열이 나뉩니다.</li><li>인식이 틀리게 읽은 글자를 다른 글자로 추측해 고쳐주지는 않습니다. 잘못 읽은 글자는 편집창에서 직접 고쳐야 합니다.</li><li>PDF 저장은 텍스트 추출 시점의 인식 결과를 그대로 사용합니다. <b>편집창에서 고친 내용은 PDF에 반영되지 않습니다</b> — 고친 내용을 남기려면 .txt 또는 .md로 저장하세요.</li></ul></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="tile dark2">
+    <div class="guide">
+      <p class="kicker" style="color:#2997ff">COMMAND LINE</p>
+      <h2>반복 작업이나 스크립트에는 명령줄로.</h2>
+      <div class="rule"><h3>기본 실행 (표준 출력)</h3><code>python image_to_text.py ex.png</code></div>
+      <div class="rule"><h3>텍스트 파일로 저장</h3><code>python image_to_text.py ex.png --output result.txt</code></div>
+      <div class="rule"><h3>검색 가능한 PDF로 저장</h3><code>python image_to_text.py ex.png --pdf result.pdf</code></div>
+      <div class="rule"><h3>클립보드 이미지, 확대 배율 올리기</h3><code>python image_to_text.py --scale 3</code></div>
+      <p class="note">이미지 경로를 생략하면 클립보드에 있는 이미지를 사용합니다. --scale의 기본값은 2로, 인식 전에 이미지를 그만큼 확대해 정확도를 높입니다. 작은 글자가 잘 안 읽히면 배율을 올려보세요.</p>
+    </div>
+  </section>
+
+  <section class="tile">
+    <div class="guide">
+      <p class="kicker">PRIVACY &amp; LIMITS</p>
+      <h2>내 PC 안에서 끝나고,<br>못 고치는 것은 못 고칩니다.</h2>
+      <div class="guide-grid">
+        <div><h3>로컬 처리</h3><p>Windows 내장 OCR(Windows.Media.Ocr)만 사용합니다. 설치, 로그인, API 키가 필요 없고 이미지는 인터넷으로 전송되지 않습니다.</p></div>
+        <div><h3>인식 언어와 확대</h3><p>한국어와 영어를 함께 인식합니다. 인식 전 이미지를 2배로 확대하는데, 이 확대가 인식 정확도를 눈에 띄게 높이기 때문입니다. 한국어 인식기가 없는 PC에서는 사용할 수 없습니다.</p></div>
+        <div><h3>남기는 문자</h3><p>숫자, 한글, 영문, 공백, 문장부호, · • ※만 남기고 나머지 인식 노이즈는 지웁니다.</p></div>
+        <div><h3>고쳐주지 않는 것</h3><p><b>틀리게 읽은 글자를 다른 글자로 바꿔 추측해주지는 않습니다.</b> 예를 들어 원본의 "Card"를 "Cad"로 읽었다면 결과도 "Cad"로 남습니다 — "Card"로 자동 교정되지 않습니다. 오타 교정은 편집창에서 직접 해야 합니다.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="tile">
+    <div class="guide">
+      <p class="kicker">TROUBLESHOOTING</p>
+      <h2>막히는 지점을 빠르게 찾기.</h2>
+      <div class="rule"><h3>"Windows에 한국어 문자 인식기가 없습니다"가 표시됩니다.</h3><p>설정 → 시간 및 언어 → 언어 및 지역 → 한국어의 언어 옵션에서 <b>광학 문자 인식</b>을 설치한 뒤 앱을 다시 시작하세요.</p></div>
+      <div class="rule"><h3>텍스트 추출이 오래 걸리거나 끝나지 않습니다.</h3><p>인식 시간 제한은 기본 60초입니다. 이미지가 매우 크면 명령줄에서 <code style="display:inline;padding:2px 6px">--timeout</code>으로 제한을 늘려 다시 시도하세요.</p></div>
+      <div class="rule"><h3>표나 항목이 뒤죽박죽으로 섞여 나옵니다.</h3><p>같은 줄 높이로 인식된 항목만 탭으로 묶입니다. 원본의 줄 배치가 심하게 어긋나 있으면 결과도 어긋날 수 있으니 편집창에서 정리하세요.</p></div>
+      <div class="rule"><h3>저장한 PDF에 편집창에서 고친 내용이 보이지 않습니다.</h3><p>PDF의 텍스트는 인식 시점의 좌표에 얹히므로 이후 편집창에서 고친 내용은 반영되지 않습니다. 고친 내용을 남기려면 .txt 또는 .md로 따로 저장하세요.</p></div>
+      <div class="rule"><h3>"이미지가 너무 큽니다"가 표시됩니다.</h3><p>Windows 인식기가 허용하는 최대 크기를 넘은 이미지입니다. 이미지를 줄이거나 필요한 영역만 잘라서 다시 시도하세요.</p></div>
+    </div>
+  </section>
+
+  <footer><div class="inner">imageConverter · Local image-to-text tool · <a href="./README.md">README 열기</a> · <a href="./fileConverter_GUIDE.html">File Converter 가이드</a> · <a href="./articleConverter_GUIDE.html">Article Converter 가이드</a></div></footer>
+</body>
+</html>
