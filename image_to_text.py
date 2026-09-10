@@ -2,17 +2,23 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
+import shutil
 import subprocess
+import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
 
+from PIL import Image, ImageGrab
+
 ROW_OVERLAP_RATIO = 0.5
 DEFAULT_TIMEOUT = 60
 MAX_IMAGE_DIMENSION = 10000
+DEFAULT_SCALE = 2.0
 BRIDGE_SCRIPT = Path(__file__).with_name("win_ocr.ps1")
 
 # 허용 문자: 숫자, 영문, 한글 음절/자모, 공백, ASCII 문장부호, 문서 기호(· • ※)
@@ -127,3 +133,139 @@ def pick_language(languages: Sequence[str]) -> str:
         "설정 → 시간 및 언어 → 언어 및 지역 → 한국어의 언어 옵션에서 "
         "'광학 문자 인식'을 설치한 뒤 다시 시도하세요."
     )
+
+
+@dataclass(frozen=True)
+class OcrResult:
+    text: str
+    lines: tuple[OcrLine, ...]
+    language: str
+    scale: float
+
+
+def load_image(path: Path | str) -> Image.Image:
+    path = Path(path)
+    if not path.is_file():
+        raise OcrError(f"이미지를 찾을 수 없습니다: {path}")
+    try:
+        with Image.open(path) as opened:
+            return opened.convert("RGB")
+    except (OSError, ValueError) as exc:
+        raise OcrError(f"이미지를 열지 못했습니다: {path.name} ({exc})") from exc
+
+
+def image_from_clipboard() -> Image.Image:
+    try:
+        data = ImageGrab.grabclipboard()
+    except OSError as exc:
+        raise OcrError(f"클립보드를 읽지 못했습니다. {exc}") from exc
+    if isinstance(data, Image.Image):
+        return data.convert("RGB")
+    if isinstance(data, list) and data:
+        return load_image(Path(data[0]))
+    raise OcrError("클립보드에 이미지가 없습니다. 이미지를 복사한 뒤 다시 붙여넣으세요.")
+
+
+def prepare_image(image: Image.Image, scale: float, limit: int) -> tuple[Image.Image, float]:
+    """RGB 로 바꾸고 확대한다. 확대 결과가 인식기 제한을 넘지 않도록 배율을 줄인다."""
+    longest = max(image.size)
+    if longest > limit:
+        raise OcrError(
+            f"이미지가 너무 큽니다. 긴 변이 {limit}px 이하여야 합니다. "
+            f"현재 {image.width}×{image.height}"
+        )
+    effective = max(1.0, min(scale, limit / longest))
+    prepared = image.convert("RGB")
+    if effective > 1.0:
+        prepared = prepared.resize(
+            (round(prepared.width * effective), round(prepared.height * effective)),
+            Image.LANCZOS,
+        )
+    return prepared, effective
+
+
+def image_to_text(
+    source: Path | str | Image.Image,
+    *,
+    scale: float = DEFAULT_SCALE,
+    timeout: int = DEFAULT_TIMEOUT,
+) -> OcrResult:
+    image = source if isinstance(source, Image.Image) else load_image(source)
+    languages, limit = engine_info(min(timeout, 15))
+    language = pick_language(languages)
+    prepared, effective = prepare_image(image, scale, limit)
+
+    workspace = Path(tempfile.mkdtemp(prefix="imgocr_"))
+    try:
+        page = workspace / "page.png"
+        prepared.save(page, format="PNG")
+        payload = _run_bridge(
+            ["-ImagePath", str(page), "-Language", language], timeout)
+    finally:
+        shutil.rmtree(workspace, ignore_errors=True)
+
+    lines = []
+    for item in payload.get("lines") or ():
+        cleaned = filter_characters(str(item.get("text", "")))
+        if not cleaned:
+            continue
+        lines.append(
+            OcrLine(
+                text=cleaned,
+                x=float(item.get("x", 0.0)),
+                y=float(item.get("y", 0.0)),
+                width=float(item.get("w", 0.0)),
+                height=float(item.get("h", 0.0)),
+            )
+        )
+    if not lines:
+        raise OcrError("텍스트를 찾지 못했습니다. 글자가 너무 작거나 흐릴 수 있습니다.")
+    return OcrResult(
+        text=group_lines(lines),
+        lines=tuple(lines),
+        language=language,
+        scale=effective,
+    )
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="이미지에서 한국어/영어 텍스트를 추출합니다.")
+    parser.add_argument(
+        "image", nargs="?", help="이미지 파일 경로 (생략하면 클립보드 이미지를 사용합니다)")
+    parser.add_argument(
+        "--scale", type=float, default=DEFAULT_SCALE,
+        help=f"인식 전 확대 배율 (기본: {DEFAULT_SCALE})")
+    parser.add_argument(
+        "--timeout", type=int, default=DEFAULT_TIMEOUT,
+        help=f"인식 시간 제한(초) (기본: {DEFAULT_TIMEOUT})")
+    parser.add_argument("--output", type=Path, help="결과를 저장할 텍스트 파일")
+    parser.add_argument("--pdf", type=Path, help="검색 가능한 PDF로 저장할 경로")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    try:
+        image = load_image(args.image) if args.image else image_from_clipboard()
+        result = image_to_text(image, scale=args.scale, timeout=args.timeout)
+        if args.pdf:
+            from image_to_pdf import build_searchable_pdf
+
+            saved = build_searchable_pdf(image, result, args.pdf, overwrite=True)
+            print(f"PDF 저장 완료: {saved}")
+    except OcrError as exc:
+        print(f"오류: {exc}", file=sys.stderr)
+        return 1
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(result.text, encoding="utf-8")
+        print(f"저장 완료: {args.output}")
+    elif not args.pdf:
+        sys.stdout.reconfigure(encoding="utf-8")
+        print(result.text)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,4 +1,8 @@
+import tempfile
 import unittest
+from pathlib import Path
+
+from PIL import Image
 
 import image_to_text
 from image_to_text import OcrLine
@@ -74,6 +78,75 @@ class PickLanguageTests(unittest.TestCase):
 
     def test_bridge_script_exists_next_to_module(self):
         self.assertTrue(image_to_text.BRIDGE_SCRIPT.is_file())
+
+
+HAS_KOREAN_RECOGNIZER = False
+try:
+    HAS_KOREAN_RECOGNIZER = any(
+        tag.lower().startswith("ko") for tag in image_to_text.engine_info()[0]
+    )
+except image_to_text.OcrError:
+    HAS_KOREAN_RECOGNIZER = False
+
+
+class PrepareImageTests(unittest.TestCase):
+    def test_image_is_upscaled_by_the_requested_factor(self):
+        prepared, scale = image_to_text.prepare_image(
+            Image.new("RGB", (100, 200)), 2.0, 10000)
+        self.assertEqual(prepared.size, (200, 400))
+        self.assertEqual(scale, 2.0)
+
+    def test_scale_is_reduced_so_the_result_fits_the_limit(self):
+        prepared, scale = image_to_text.prepare_image(
+            Image.new("RGB", (100, 400)), 2.0, 600)
+        self.assertLessEqual(max(prepared.size), 600)
+        self.assertEqual(scale, 1.5)
+
+    def test_palette_image_is_converted_to_rgb(self):
+        prepared, _ = image_to_text.prepare_image(
+            Image.new("P", (50, 50)), 1.0, 10000)
+        self.assertEqual(prepared.mode, "RGB")
+
+    def test_oversized_original_is_rejected_with_both_numbers(self):
+        with self.assertRaises(image_to_text.OcrError) as caught:
+            image_to_text.prepare_image(Image.new("RGB", (12000, 10)), 2.0, 10000)
+        message = str(caught.exception)
+        self.assertIn("10000", message)
+        self.assertIn("12000", message)
+
+
+class LoadImageTests(unittest.TestCase):
+    def test_missing_file_raises_ocr_error(self):
+        with self.assertRaises(image_to_text.OcrError):
+            image_to_text.load_image(Path("존재하지_않는_이미지.png"))
+
+    def test_non_image_file_raises_ocr_error(self):
+        with tempfile.TemporaryDirectory() as workspace:
+            broken = Path(workspace) / "broken.png"
+            broken.write_text("이건 이미지가 아닙니다", encoding="utf-8")
+            with self.assertRaises(image_to_text.OcrError):
+                image_to_text.load_image(broken)
+
+
+@unittest.skipUnless(HAS_KOREAN_RECOGNIZER, "한국어 인식기가 설치되어 있지 않습니다")
+class SamplePosterTests(unittest.TestCase):
+    def test_recruitment_poster_yields_its_key_phrases(self):
+        result = image_to_text.image_to_text(Path("ex.png"))
+        self.assertIn("2026 신입 인재 모집", result.text)
+        self.assertIn("여의도 본사 근무", result.text)
+        self.assertIn("모집분야", result.text)
+
+    def test_table_label_and_content_land_on_the_same_row(self):
+        result = image_to_text.image_to_text(Path("ex.png"))
+        rows = [row for row in result.text.splitlines() if row.startswith("근무지\t")]
+        self.assertTrue(rows, "'근무지' 항목이 내용과 같은 행으로 묶이지 않았습니다")
+
+    def test_every_stored_line_is_already_filtered(self):
+        result = image_to_text.image_to_text(Path("ex.png"))
+        for stored in result.lines:
+            with self.subTest(text=stored.text):
+                self.assertEqual(
+                    stored.text, image_to_text.filter_characters(stored.text))
 
 
 if __name__ == "__main__":
