@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$ImagePath,
     [string]$Language = 'ko',
     [Parameter(Mandatory = $true)][string]$OutPath,
