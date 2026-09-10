@@ -60,5 +60,21 @@ class FilterCharactersTests(unittest.TestCase):
         self.assertEqual(image_to_text.filter_characters("「」回"), "")
 
 
+class PickLanguageTests(unittest.TestCase):
+    def test_plain_ko_tag_is_selected(self):
+        self.assertEqual(image_to_text.pick_language(["en-US", "ko"]), "ko")
+
+    def test_regional_korean_tag_is_selected(self):
+        self.assertEqual(image_to_text.pick_language(["en-US", "ko-KR"]), "ko-KR")
+
+    def test_missing_korean_recognizer_raises_with_setup_guidance(self):
+        with self.assertRaises(image_to_text.OcrError) as caught:
+            image_to_text.pick_language(["en-US"])
+        self.assertIn("광학 문자 인식", str(caught.exception))
+
+    def test_bridge_script_exists_next_to_module(self):
+        self.assertTrue(image_to_text.BRIDGE_SCRIPT.is_file())
+
+
 if __name__ == "__main__":
     unittest.main()
