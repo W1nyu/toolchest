@@ -28,5 +28,37 @@ class GroupLinesTests(unittest.TestCase):
         self.assertEqual(image_to_text.group_lines(lines), "A\tB\nC")
 
 
+class FilterCharactersTests(unittest.TestCase):
+    def test_korean_english_digits_and_punctuation_survive(self):
+        for text in [
+            "학/석사 기졸업자 또는 2027년 2월 졸업예정자",
+            "국내(대한민국) 취업 및 해외 출장",
+            "8월 31일(월) 오전 10시 ~ 9월 14일(월)",
+            "career.hyundai.co.kr",
+            "1/2금융권 대출 금액의 연 1% 이자지원",
+            "영어 Speaking 성적(TOEIC Speaking 또는 OPIc) 필수 제출",
+        ]:
+            with self.subTest(text=text):
+                self.assertEqual(image_to_text.filter_characters(text), text)
+
+    def test_document_symbols_survive(self):
+        self.assertEqual(image_to_text.filter_characters("※ 상기 모집 직무"), "※ 상기 모집 직무")
+        self.assertEqual(image_to_text.filter_characters("• 전공 무관"), "• 전공 무관")
+
+    def test_noise_characters_are_removed_not_replaced(self):
+        # 제거만 한다. 「 를 r 로 되돌리지 않는다.
+        self.assertEqual(image_to_text.filter_characters("Ca「d"), "Cad")
+        self.assertEqual(image_to_text.filter_characters("回 口 而"), "")
+
+    def test_hangul_jamo_survives(self):
+        self.assertEqual(image_to_text.filter_characters("ㄱㄴㄷ"), "ㄱㄴㄷ")
+
+    def test_runs_of_whitespace_collapse_and_edges_are_trimmed(self):
+        self.assertEqual(image_to_text.filter_characters("  모집  구분  "), "모집 구분")
+
+    def test_text_of_only_noise_becomes_empty(self):
+        self.assertEqual(image_to_text.filter_characters("「」回"), "")
+
+
 if __name__ == "__main__":
     unittest.main()

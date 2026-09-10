@@ -2,10 +2,24 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Sequence
 
 ROW_OVERLAP_RATIO = 0.5
+
+# 허용 문자: 숫자, 영문, 한글 음절/자모, 공백, ASCII 문장부호, 문서 기호(· • ※)
+_ALLOWED_CHARACTERS = (
+    "0-9A-Za-z"
+    "가-힣"                    # 한글 음절
+    "ᄀ-ᇿㄱ-ㆎ"       # 한글 자모, 호환 자모
+    "!-/:-@"       # ASCII 문장부호 앞쪽
+    "[-`{-~"       # ASCII 문장부호 뒤쪽
+    "·•※"               # · • ※
+    " \t"
+)
+_DISALLOWED = re.compile(f"[^{_ALLOWED_CHARACTERS}]")
+_WHITESPACE_RUN = re.compile(r"\s+")
 
 
 class OcrError(Exception):
@@ -26,6 +40,15 @@ def _same_row(first: OcrLine, other: OcrLine) -> bool:
     if overlap <= 0:
         return False
     return overlap >= ROW_OVERLAP_RATIO * min(first.height, other.height)
+
+
+def filter_characters(text: str) -> str:
+    """허용 목록에 없는 문자를 제거한다.
+
+    제거만 하고 치환은 하지 않는다. 인식이 틀린 글자를 다른 글자로 바꿔 추측하면
+    맞았던 글자까지 틀리게 만들 수 있어서, 노이즈를 지우는 데까지만 한다.
+    """
+    return _WHITESPACE_RUN.sub(" ", _DISALLOWED.sub("", text)).strip()
 
 
 def group_lines(lines: Sequence[OcrLine]) -> str:
