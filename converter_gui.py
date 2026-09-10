@@ -231,6 +231,7 @@ class ConverterApp(tk.Tk):
     def _show_image(self, image: Image.Image, label: str) -> None:
         self.current_image = image
         self.last_result = None
+        self.image_text.delete("1.0", "end")
         preview = image.copy()
         preview.thumbnail((220, 220))
         self.preview_photo = ImageTk.PhotoImage(preview)
