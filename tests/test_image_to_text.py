@@ -173,6 +173,22 @@ class TransparencyTests(unittest.TestCase):
         self.assertEqual(prepared.getpixel((0, 0)), (255, 255, 255))
 
 
+class ClipboardRawTests(unittest.TestCase):
+    def test_white_canvas_off_keeps_the_alpha_channel(self):
+        # 붙여넣기는 알파를 살린 채 임시 PNG 로 떨궈야 한다. 여기서 RGB 로 바꿔
+        # 버리면 투명 영역이 검게 굳어, 나중에 흰 캔버스를 켜도 되돌릴 수 없다.
+        source = Image.new("RGBA", (6, 4), (0, 0, 0, 0))
+        original = image_to_text.ImageGrab.grabclipboard
+        image_to_text.ImageGrab.grabclipboard = lambda: source
+        try:
+            kept = image_to_text.image_from_clipboard(white_canvas=False)
+            flattened = image_to_text.image_from_clipboard(white_canvas=True)
+        finally:
+            image_to_text.ImageGrab.grabclipboard = original
+        self.assertIn("A", kept.getbands())
+        self.assertEqual(flattened.getpixel((0, 0)), (255, 255, 255))
+
+
 class LoadImageTransparencyTests(unittest.TestCase):
     def test_transparent_png_is_flattened_when_loaded_from_disk(self):
         # 붙여넣기한 이미지는 임시 PNG 를 거쳐 load_image 로 들어온다. 여기서

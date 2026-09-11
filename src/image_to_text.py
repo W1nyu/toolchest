@@ -221,7 +221,9 @@ def image_from_clipboard(*, white_canvas: bool = True) -> Image.Image:
     except OSError as exc:
         raise OcrError(f"클립보드를 읽지 못했습니다. {exc}") from exc
     if isinstance(data, Image.Image):
-        return flatten_transparency(data) if white_canvas else data.convert("RGB")
+        # white_canvas 를 끄면 알파를 살린 채 그대로 돌려준다. 여기서 RGB 로
+        # 바꾸면 투명 영역이 검게 굳어, 이후 단계에서 되돌릴 수 없다.
+        return flatten_transparency(data) if white_canvas else data
     if isinstance(data, list) and data:
         return load_image(Path(data[0]), white_canvas=white_canvas)
     raise OcrError("클립보드에 이미지가 없습니다. 이미지를 복사한 뒤 다시 붙여넣으세요.")
