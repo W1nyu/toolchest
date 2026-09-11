@@ -20,7 +20,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import urljoin, urlsplit, urlunsplit
 
 try:
     import requests
@@ -80,6 +80,16 @@ TISTORY_SELECTORS = (
 CATCH_SELECTORS = (
     "div.news_detail_cont",
     "#contents2 div.news_detail_cont",
+)
+LINKAREER_SELECTORS = (
+    "#post-detail-content-container",
+    "div.post-detail-content",
+    "div.editor-viewer.post-detail",
+)
+NAVER_BLOG_SELECTORS = (
+    ".se-main-container",
+    "#postViewArea",
+    ".post_ct",
 )
 GENERIC_SELECTORS = (
     "article",
@@ -146,7 +156,9 @@ def _require(*names: str) -> None:
 
 def validate_url(url: str) -> str:
     """Allow only ordinary public HTTP(S) web addresses."""
-    candidate = url.strip()
+    # 문장에서 복사한 주소는 끝에 쉼표나 마침표가 딸려 오는 일이 잦다.
+    # 일반 문장부호만 떼어낸다. URL 인코딩된 문자는 건드리지 않는다.
+    candidate = url.strip().rstrip(".,;!?")
     parts = urlsplit(candidate)
     if parts.scheme not in {"http", "https"} or not parts.netloc:
         raise WebPdfError("http:// 또는 https://로 시작하는 웹페이지 주소를 입력하세요.")
@@ -156,11 +168,28 @@ def validate_url(url: str) -> str:
     return candidate
 
 
+def _fetch_url(url: str) -> str:
+    """데스크톱 네이버 블로그 주소를 공개 모바일 엔드포인트로 바꾼다.
+
+    데스크톱 블로그 껍데기는 iframe 하나만 담고 있다. 모바일 엔드포인트는 같은
+    글을 하나의 HTML 문서로 주므로, 브라우저 조작 없이 본문을 읽을 수 있다.
+    """
+    parts = urlsplit(url)
+    hostname = (parts.hostname or "").lower()
+    if hostname not in {"blog.naver.com", "www.blog.naver.com"}:
+        return url
+    match = re.fullmatch(r"/([^/]+)/([0-9]+)/?", parts.path)
+    if not match:
+        return url
+    blog_id, post_id = match.groups()
+    return urlunsplit(("https", "m.blog.naver.com", f"/{blog_id}/{post_id}", "", ""))
+
+
 def fetch_html(url: str, timeout: int = 30) -> tuple[str, str]:
     _require("requests")
-    validate_url(url)
+    request_url = _fetch_url(validate_url(url))
     try:
-        response = requests.get(url, headers=REQUEST_HEADERS, timeout=timeout, allow_redirects=True)
+        response = requests.get(request_url, headers=REQUEST_HEADERS, timeout=timeout, allow_redirects=True)
         response.raise_for_status()
     except requests.RequestException as exc:  # type: ignore[union-attr]
         raise WebPdfError(f"웹페이지를 불러오지 못했습니다: {exc}") from exc
@@ -281,6 +310,16 @@ def _find_content_root(soup: Any, source_url: str) -> Any:
                 return found
     if hostname.endswith("catch.co.kr"):
         for selector in CATCH_SELECTORS:
+            found = soup.select_one(selector)
+            if found and (found.get_text(strip=True) or found.find("img")):
+                return found
+    if hostname.endswith("linkareer.com"):
+        for selector in LINKAREER_SELECTORS:
+            found = soup.select_one(selector)
+            if found and (found.get_text(strip=True) or found.find("img")):
+                return found
+    if hostname.endswith("naver.com"):
+        for selector in NAVER_BLOG_SELECTORS:
             found = soup.select_one(selector)
             if found and (found.get_text(strip=True) or found.find("img")):
                 return found
@@ -560,7 +599,8 @@ def webpage_to_pdf(
     """Download a page, isolate its main content, and save it as a PDF."""
     if timeout < 5:
         raise WebPdfError("시간 제한은 5초 이상이어야 합니다.")
-    html_text, final_url = fetch_html(url, timeout)
+    source_url = validate_url(url)
+    html_text, final_url = fetch_html(source_url, timeout)
     article = extract_article(html_text, final_url)
     # Some sites send only a shell in the first HTML response.  If that shell
     # contains almost no article text, ask the local browser for the rendered
@@ -571,6 +611,9 @@ def webpage_to_pdf(
         if _text_length(rendered_article) <= _text_length(article):
             raise WebPdfError("렌더링 후에도 본문을 찾지 못했습니다. 로그인 또는 접근 제한 페이지일 수 있습니다.")
         article = rendered_article
+    # PDF 에 적는 원본 주소는 사용자가 넣은 주소를 그대로 쓰고, 상대 경로
+    # 이미지는 위에서 구한 최종 주소 기준으로 해석한다.
+    article = Article(title=article.title, source_url=source_url, blocks=article.blocks)
     destination = _next_output_path(output_dir or DEFAULT_OUTPUT_DIR, article.title, overwrite)
     skipped = build_pdf(article, destination, include_source=include_source, timeout=timeout)
     return WebPdfResult(
