@@ -83,6 +83,13 @@ try {
     exit 0
 }
 catch {
-    [Console]::Error.WriteLine($_.Exception.Message)
+    $message = $_.Exception.Message
+    try {
+        $errorPayload = [pscustomobject]@{ error = $message }
+        $errorPayload | ConvertTo-Json -Depth 5 -Compress | Out-File -FilePath $OutPath -Encoding utf8
+    } catch {
+        # $OutPath 자체를 쓸 수 없는 경우, 아래 stderr 출력만이라도 남긴다.
+    }
+    [Console]::Error.WriteLine($message)
     exit 1
 }

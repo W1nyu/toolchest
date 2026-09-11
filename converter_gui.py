@@ -18,7 +18,7 @@ from web_to_pdf import WebPdfError, webpage_to_pdf
 class ConverterApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
-        self.title("로컬 변환기 / 웹 본문 PDF")
+        self.title("로컬 변환기")
         self.geometry("820x640")
         self.minsize(720, 560)
         self.input_path = tk.StringVar()

@@ -106,9 +106,19 @@ def _run_bridge(args: list[str], timeout: int) -> dict:
             raise OcrError("PowerShell을 찾지 못했습니다. Windows에서 실행해야 합니다.") from exc
         except subprocess.TimeoutExpired as exc:
             raise OcrError(f"문자 인식이 {timeout}초 안에 끝나지 않았습니다.") from exc
-        if completed.returncode != 0 or not out_path.is_file():
-            detail = (completed.stderr or b"").decode("utf-8", "replace").strip()
+        if completed.returncode != 0:
+            detail = ""
+            if out_path.is_file():
+                try:
+                    payload = json.loads(out_path.read_text(encoding="utf-8-sig"))
+                    detail = str(payload.get("error") or "")
+                except (OSError, json.JSONDecodeError):
+                    detail = ""
+            if not detail:
+                detail = (completed.stderr or b"").decode("utf-8", "replace").strip()
             raise OcrError(f"문자 인식에 실패했습니다. {detail[:300]}".strip())
+        if not out_path.is_file():
+            raise OcrError("문자 인식에 실패했습니다. 결과 파일이 생성되지 않았습니다.")
         try:
             return json.loads(out_path.read_text(encoding="utf-8-sig"))
         except (OSError, json.JSONDecodeError) as exc:
