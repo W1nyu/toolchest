@@ -41,6 +41,8 @@ class ConverterApp(tk.Tk):
         self.last_result = None
         self.preview_photo: ImageTk.PhotoImage | None = None
         self.temp_image_path: Path | None = None
+        self.image_source_path: Path | None = None
+        self.white_canvas = tk.BooleanVar(value=True)
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -109,20 +111,24 @@ class ConverterApp(tk.Tk):
         frame = ttk.Frame(parent, padding=18)
         frame.pack(fill="both", expand=True)
         frame.columnconfigure(2, weight=1)
-        frame.rowconfigure(3, weight=1)
+        frame.rowconfigure(4, weight=1)
 
         ttk.Button(frame, text="이미지 불러오기", command=self.choose_image).grid(
             row=0, column=0, sticky="w")
         ttk.Button(frame, text="클립보드에서 붙여넣기", command=self.paste_image).grid(
             row=0, column=1, sticky="w", padx=8)
+        ttk.Checkbutton(
+            frame, text="흰 캔버스", variable=self.white_canvas,
+            command=self.reload_current_image,
+        ).grid(row=0, column=2, sticky="w", padx=8)
         ttk.Label(frame, textvariable=self.image_info, wraplength=420).grid(
-            row=0, column=2, sticky="w", padx=8)
+            row=1, column=0, columnspan=3, sticky="w")
 
         self.preview_label = ttk.Label(frame)
-        self.preview_label.grid(row=1, column=0, columnspan=3, sticky="w", pady=10)
+        self.preview_label.grid(row=2, column=0, columnspan=3, sticky="w", pady=10)
 
         run_row = ttk.Frame(frame)
-        run_row.grid(row=2, column=2, sticky="e")
+        run_row.grid(row=3, column=2, sticky="e")
         self.direct_pdf_button = ttk.Button(
             run_row, text="PDF로 바로 저장", command=self.start_direct_pdf)
         self.direct_pdf_button.pack(side="left", padx=(0, 8))
@@ -131,10 +137,10 @@ class ConverterApp(tk.Tk):
         self.image_button.pack(side="left")
 
         self.image_text = scrolledtext.ScrolledText(frame, wrap="word", height=12)
-        self.image_text.grid(row=3, column=0, columnspan=3, sticky="nsew", pady=10)
+        self.image_text.grid(row=4, column=0, columnspan=3, sticky="nsew", pady=10)
 
         actions = ttk.Frame(frame)
-        actions.grid(row=4, column=0, columnspan=3, sticky="w")
+        actions.grid(row=5, column=0, columnspan=3, sticky="w")
         ttk.Button(actions, text="전체 복사", command=self.copy_image_text).pack(side="left")
         ttk.Button(actions, text=".txt 저장",
                    command=lambda: self.save_image_text("txt")).pack(side="left", padx=8)
@@ -144,7 +150,7 @@ class ConverterApp(tk.Tk):
                    command=self.save_image_pdf).pack(side="left", padx=8)
 
         ttk.Label(frame, textvariable=self.image_status, wraplength=740).grid(
-            row=5, column=0, columnspan=3, sticky="w", pady=12)
+            row=6, column=0, columnspan=3, sticky="w", pady=12)
 
     def choose_input(self) -> None:
         path = filedialog.askopenfilename(title="변환할 파일 선택", filetypes=[("모든 파일", "*.*")])
@@ -244,7 +250,8 @@ class ConverterApp(tk.Tk):
         self.image_text.delete("1.0", "end")
         preview = image.copy()
         preview.thumbnail((220, 220))
-        self.preview_photo = ImageTk.PhotoImage(preview)
+        # 마스터를 명시하지 않으면 Tk 루트가 여럿일 때 엉뚱한 루트에 묶인다.
+        self.preview_photo = ImageTk.PhotoImage(preview, master=self)
         self.preview_label.configure(image=self.preview_photo)
         self.image_info.set(f"{label} · {image.width}×{image.height}")
 
@@ -257,11 +264,12 @@ class ConverterApp(tk.Tk):
         if not path:
             return
         try:
-            image = load_image(Path(path))
+            image = load_image(Path(path), white_canvas=self.white_canvas.get())
         except OcrError as exc:
             messagebox.showerror("이미지 열기 실패", str(exc))
             return
         self._show_image(image, Path(path).name)
+        self.image_source_path = Path(path)
         self.image_status.set("텍스트 추출을 누르세요.")
 
     def paste_image(self) -> None:
@@ -272,7 +280,7 @@ class ConverterApp(tk.Tk):
         같아진다. 이 임시 파일은 다음 이미지를 넣거나 창을 닫을 때 지운다.
         """
         try:
-            pasted = image_from_clipboard()
+            pasted = image_from_clipboard(white_canvas=False)
         except OcrError as exc:
             messagebox.showwarning("붙여넣기 실패", str(exc))
             return
@@ -280,14 +288,31 @@ class ConverterApp(tk.Tk):
         path = workspace / "clipboard.png"
         try:
             pasted.save(path, format="PNG")
-            image = load_image(path)
+            image = load_image(path, white_canvas=self.white_canvas.get())
         except (OSError, ValueError, OcrError) as exc:
             shutil.rmtree(workspace, ignore_errors=True)
             messagebox.showerror("붙여넣기 실패", str(exc))
             return
         self._show_image(image, path.name)
         self.temp_image_path = path
+        self.image_source_path = path
         self.image_status.set("텍스트 추출 또는 PDF로 바로 저장을 누르세요.")
+
+    def reload_current_image(self) -> None:
+        """흰 캔버스 설정이 바뀌면 원본에서 다시 읽어 미리보기까지 맞춘다."""
+        source = self.image_source_path
+        if source is None or not source.is_file():
+            return
+        keep_temp = self.temp_image_path
+        try:
+            image = load_image(source, white_canvas=self.white_canvas.get())
+        except OcrError as exc:
+            messagebox.showerror("이미지 열기 실패", str(exc))
+            return
+        self.temp_image_path = None          # _show_image 가 지우지 않도록 잠시 뗀다
+        self._show_image(image, source.name)
+        self.temp_image_path = keep_temp
+        self.image_source_path = source
 
     def _discard_temp_image(self) -> None:
         """붙여넣기로 만들어 둔 임시 PNG 와 그 폴더를 지운다."""
@@ -310,7 +335,8 @@ class ConverterApp(tk.Tk):
 
     def _extract_image_text(self) -> None:
         try:
-            result = image_to_text(self.current_image)
+            result = image_to_text(
+                self.current_image, white_canvas=self.white_canvas.get())
         except OcrError as exc:
             self.after(0, self._finish_image_error, str(exc))
         else:
@@ -408,7 +434,8 @@ class ConverterApp(tk.Tk):
 
     def _direct_pdf(self, destination: Path) -> None:
         try:
-            result = image_to_text(self.current_image)
+            result = image_to_text(
+                self.current_image, white_canvas=self.white_canvas.get())
             build_searchable_pdf(
                 self.current_image, result, destination, overwrite=True)
         except (OcrError, OSError) as exc:

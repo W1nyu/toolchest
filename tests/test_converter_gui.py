@@ -91,7 +91,7 @@ class ClipboardTempFileTests(unittest.TestCase):
 
     def _paste(self, app, image):
         original = converter_gui.image_from_clipboard
-        converter_gui.image_from_clipboard = lambda: image
+        converter_gui.image_from_clipboard = lambda **kwargs: image
         try:
             app.paste_image()
         finally:

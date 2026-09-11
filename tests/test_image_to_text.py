@@ -173,6 +173,22 @@ class TransparencyTests(unittest.TestCase):
         self.assertEqual(prepared.getpixel((0, 0)), (255, 255, 255))
 
 
+class LoadImageTransparencyTests(unittest.TestCase):
+    def test_transparent_png_is_flattened_when_loaded_from_disk(self):
+        # 붙여넣기한 이미지는 임시 PNG 를 거쳐 load_image 로 들어온다. 여기서
+        # 알파를 그냥 버리면 투명했던 자리가 검게 굳어, 이후 prepare_image 가
+        # 평탄화하려 해도 되돌릴 알파가 남아 있지 않다.
+        with tempfile.TemporaryDirectory() as workspace:
+            path = Path(workspace) / "clipboard.png"
+            image = Image.new("RGBA", (12, 8), (0, 0, 0, 0))
+            image.putpixel((3, 3), (0, 0, 0, 255))
+            image.save(path, format="PNG")
+            loaded = image_to_text.load_image(path)
+        self.assertEqual(loaded.mode, "RGB")
+        self.assertEqual(loaded.getpixel((0, 0)), (255, 255, 255))
+        self.assertEqual(loaded.getpixel((3, 3)), (0, 0, 0))
+
+
 class LoadImageTests(unittest.TestCase):
     def test_missing_file_raises_ocr_error(self):
         with self.assertRaises(image_to_text.OcrError):

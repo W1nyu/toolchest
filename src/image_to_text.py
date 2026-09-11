@@ -200,26 +200,30 @@ class OcrResult:
     scale: float
 
 
-def load_image(path: Path | str) -> Image.Image:
+def load_image(path: Path | str, *, white_canvas: bool = True) -> Image.Image:
     path = Path(path)
     if not path.is_file():
         raise OcrError(f"이미지를 찾을 수 없습니다: {path}")
     try:
         with Image.open(path) as opened:
-            return opened.convert("RGB")
+            # convert("RGB") 로 곧장 바꾸면 투명했던 자리가 검게 굳는다. 그러면
+            # 이후 단계에서 되돌릴 알파가 남지 않으므로 여는 시점에 평탄화한다.
+            if not white_canvas:
+                return opened.convert("RGB")
+            return flatten_transparency(opened)
     except (OSError, ValueError) as exc:
         raise OcrError(f"이미지를 열지 못했습니다: {path.name} ({exc})") from exc
 
 
-def image_from_clipboard() -> Image.Image:
+def image_from_clipboard(*, white_canvas: bool = True) -> Image.Image:
     try:
         data = ImageGrab.grabclipboard()
     except OSError as exc:
         raise OcrError(f"클립보드를 읽지 못했습니다. {exc}") from exc
     if isinstance(data, Image.Image):
-        return data.convert("RGB")
+        return flatten_transparency(data) if white_canvas else data.convert("RGB")
     if isinstance(data, list) and data:
-        return load_image(Path(data[0]))
+        return load_image(Path(data[0]), white_canvas=white_canvas)
     raise OcrError("클립보드에 이미지가 없습니다. 이미지를 복사한 뒤 다시 붙여넣으세요.")
 
 
@@ -243,7 +247,9 @@ def flatten_transparency(image: Image.Image) -> Image.Image:
     return canvas
 
 
-def prepare_image(image: Image.Image, scale: float, limit: int) -> tuple[Image.Image, float]:
+def prepare_image(
+    image: Image.Image, scale: float, limit: int, *, white_canvas: bool = True
+) -> tuple[Image.Image, float]:
     """RGB 로 바꾸고 확대한다. 확대 결과가 인식기 제한을 넘지 않도록 배율을 줄인다."""
     longest = max(image.size)
     if longest > limit:
@@ -252,7 +258,7 @@ def prepare_image(image: Image.Image, scale: float, limit: int) -> tuple[Image.I
             f"현재 {image.width}×{image.height}"
         )
     effective = max(1.0, min(scale, limit / longest))
-    prepared = flatten_transparency(image)
+    prepared = flatten_transparency(image) if white_canvas else image.convert("RGB")
     if effective > 1.0:
         prepared = prepared.resize(
             (round(prepared.width * effective), round(prepared.height * effective)),
@@ -266,11 +272,16 @@ def image_to_text(
     *,
     scale: float = DEFAULT_SCALE,
     timeout: int = DEFAULT_TIMEOUT,
+    white_canvas: bool = True,
 ) -> OcrResult:
-    image = source if isinstance(source, Image.Image) else load_image(source)
+    image = (
+        source
+        if isinstance(source, Image.Image)
+        else load_image(source, white_canvas=white_canvas)
+    )
     languages, limit = engine_info(min(timeout, 15))
     language = pick_language(languages)
-    prepared, effective = prepare_image(image, scale, limit)
+    prepared, effective = prepare_image(image, scale, limit, white_canvas=white_canvas)
 
     workspace = Path(tempfile.mkdtemp(prefix="imgocr_"))
     try:
@@ -318,14 +329,24 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"인식 시간 제한(초) (기본: {DEFAULT_TIMEOUT})")
     parser.add_argument("--output", type=Path, help="결과를 저장할 텍스트 파일")
     parser.add_argument("--pdf", type=Path, help="검색 가능한 PDF로 저장할 경로")
+    parser.add_argument(
+        "--no-white-canvas", action="store_true",
+        help="투명한 부분을 흰색으로 채우지 않고 알파를 그대로 버립니다")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
-        image = load_image(args.image) if args.image else image_from_clipboard()
-        result = image_to_text(image, scale=args.scale, timeout=args.timeout)
+        white_canvas = not args.no_white_canvas
+        image = (
+            load_image(args.image, white_canvas=white_canvas)
+            if args.image
+            else image_from_clipboard(white_canvas=white_canvas)
+        )
+        result = image_to_text(
+            image, scale=args.scale, timeout=args.timeout, white_canvas=white_canvas
+        )
         if args.pdf:
             from image_to_pdf import build_searchable_pdf
 
