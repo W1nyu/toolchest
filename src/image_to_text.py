@@ -19,7 +19,8 @@ ROW_OVERLAP_RATIO = 0.5
 COLUMN_TOLERANCE_LINES = 2
 DEFAULT_TIMEOUT = 60
 MAX_IMAGE_DIMENSION = 10000
-DEFAULT_SCALE = 2.0
+DEFAULT_SCALE = 3.0  # 실측(1.png): 2배 10/32 -> 3배 13/32. 그 이상은 거의 평평하다.
+# 긴 이미지는 prepare_image 가 인식기 한계(10000px)에 맞춰 배율을 자동으로 낮춘다.
 BRIDGE_SCRIPT = Path(__file__).with_name("win_ocr.ps1")
 
 # 허용 문자: 숫자, 영문, 한글 음절/자모, 공백, ASCII 문장부호, 문서 기호(· • ※)
@@ -222,6 +223,26 @@ def image_from_clipboard() -> Image.Image:
     raise OcrError("클립보드에 이미지가 없습니다. 이미지를 복사한 뒤 다시 붙여넣으세요.")
 
 
+def flatten_transparency(image: Image.Image) -> Image.Image:
+    """알파 채널이 있으면 흰 바탕에 합성하고, 없으면 그대로 RGB 로 바꾼다.
+
+    클립보드로 들어온 이미지는 알파 채널을 달고 오는 경우가 있다. 알파를 그냥
+    버리면 투명했던 자리가 검게 남아, 그 위의 어두운 글자를 OCR 이 읽지 못한다.
+    PDF 페이지처럼 불투명한 흰 바탕에 얹어야 저장했다가 다시 연 것과 같아진다.
+
+    불투명한 이미지는 건드리지 않는다. 지금 잘 읽히는 이미지가 나빠지면 안 된다.
+    """
+    transparent = image.mode in ("RGBA", "LA") or (
+        image.mode == "P" and "transparency" in image.info
+    )
+    if not transparent:
+        return image.convert("RGB")
+    blended = image.convert("RGBA")
+    canvas = Image.new("RGB", blended.size, (255, 255, 255))
+    canvas.paste(blended, mask=blended.split()[-1])
+    return canvas
+
+
 def prepare_image(image: Image.Image, scale: float, limit: int) -> tuple[Image.Image, float]:
     """RGB 로 바꾸고 확대한다. 확대 결과가 인식기 제한을 넘지 않도록 배율을 줄인다."""
     longest = max(image.size)
@@ -231,7 +252,7 @@ def prepare_image(image: Image.Image, scale: float, limit: int) -> tuple[Image.I
             f"현재 {image.width}×{image.height}"
         )
     effective = max(1.0, min(scale, limit / longest))
-    prepared = image.convert("RGB")
+    prepared = flatten_transparency(image)
     if effective > 1.0:
         prepared = prepared.resize(
             (round(prepared.width * effective), round(prepared.height * effective)),

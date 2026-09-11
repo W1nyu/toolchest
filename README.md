@@ -72,12 +72,12 @@ python src/web_to_pdf.py "https://example.com/article" --output-dir saved-pdfs -
 python src/image_to_text.py assets/samples/ex.png
 python src/image_to_text.py assets/samples/ex.png --output result.txt
 python src/image_to_text.py assets/samples/ex.png --pdf result.pdf
-python src/image_to_text.py --scale 3
+python src/image_to_text.py --scale 4
 ```
 
 PDF를 이미지로 바꾸려면 Poppler의 `pdftoppm` 또는 `pdftocairo`를 설치하고 PATH에 추가해야 합니다.
 
-`src/image_to_text.py`는 이미지 경로를 생략하면 클립보드의 이미지를 사용합니다. `--scale`의 기본값은 2로, 인식 전에 이미지를 그만큼 확대해 정확도를 높입니다.
+`src/image_to_text.py`는 이미지 경로를 생략하면 클립보드의 이미지를 사용합니다. `--scale`의 기본값은 3으로, 인식 전에 이미지를 그만큼 확대해 정확도를 높입니다. 실측에서 2배보다 3배가 뚜렷이 나았고 그 이상은 거의 차이가 없었습니다. 긴 이미지는 인식기 한계(긴 변 10000px)에 맞춰 배율이 자동으로 낮아집니다.
 
 모든 변환은 로컬 프로세스로 처리하며 파일을 외부 서버에 전송하지 않습니다.
 

@@ -74,8 +74,8 @@ python src\converter_gui.py</code>
       <div class="rule"><h3>기본 실행 (표준 출력)</h3><code>python src\image_to_text.py assets\samples\ex.png</code></div>
       <div class="rule"><h3>텍스트 파일로 저장</h3><code>python src\image_to_text.py assets\samples\ex.png --output result.txt</code></div>
       <div class="rule"><h3>검색 가능한 PDF로 저장</h3><code>python src\image_to_text.py assets\samples\ex.png --pdf result.pdf</code></div>
-      <div class="rule"><h3>클립보드 이미지, 확대 배율 올리기</h3><code>python src\image_to_text.py --scale 3</code></div>
-      <p class="note">이미지 경로를 생략하면 클립보드에 있는 이미지를 사용합니다. --scale의 기본값은 2로, 인식 전에 이미지를 그만큼 확대해 정확도를 높입니다. 작은 글자가 잘 안 읽히면 배율을 올려보세요.</p>
+      <div class="rule"><h3>클립보드 이미지, 확대 배율 올리기</h3><code>python src\image_to_text.py --scale 4</code></div>
+      <p class="note">이미지 경로를 생략하면 클립보드에 있는 이미지를 사용합니다. --scale의 기본값은 3으로, 인식 전에 이미지를 그만큼 확대해 정확도를 높입니다. 실측에서 2배보다 3배가 뚜렷이 나았고 그 이상은 거의 차이가 없었습니다. 긴 이미지는 인식기 한계(긴 변 10000px)에 맞춰 배율이 자동으로 낮아집니다. 작은 글자가 잘 안 읽히면 배율을 올려보세요.</p>
     </div>
   </section>
 

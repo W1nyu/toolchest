@@ -148,6 +148,31 @@ class PrepareImageTests(unittest.TestCase):
         self.assertIn("12000", message)
 
 
+class TransparencyTests(unittest.TestCase):
+    def test_transparent_background_becomes_white_not_black(self):
+        # 클립보드 이미지는 알파 채널을 달고 오는 경우가 있다. 알파를 그냥 버리면
+        # 투명했던 자리가 검게 남아 그 위의 어두운 글자를 OCR 이 못 읽는다.
+        image = Image.new("RGBA", (20, 10), (0, 0, 0, 0))
+        image.putpixel((5, 5), (0, 0, 0, 255))          # 불투명한 검은 글자 한 점
+        prepared, _ = image_to_text.prepare_image(image, 1.0, 10000)
+        self.assertEqual(prepared.mode, "RGB")
+        self.assertEqual(prepared.getpixel((0, 0)), (255, 255, 255))
+        self.assertEqual(prepared.getpixel((5, 5)), (0, 0, 0))
+
+    def test_opaque_image_is_untouched(self):
+        # 불투명 이미지는 손대지 않는다. 지금 잘 되는 경우가 나빠지면 안 된다.
+        image = Image.new("RGB", (8, 8), (8, 4, 4))
+        prepared, _ = image_to_text.prepare_image(image, 1.0, 10000)
+        self.assertEqual(prepared.getpixel((0, 0)), (8, 4, 4))
+
+    def test_palette_image_with_transparency_is_flattened(self):
+        image = Image.new("P", (8, 8), 0)
+        image.info["transparency"] = 0
+        prepared, _ = image_to_text.prepare_image(image, 1.0, 10000)
+        self.assertEqual(prepared.mode, "RGB")
+        self.assertEqual(prepared.getpixel((0, 0)), (255, 255, 255))
+
+
 class LoadImageTests(unittest.TestCase):
     def test_missing_file_raises_ocr_error(self):
         with self.assertRaises(image_to_text.OcrError):
