@@ -86,5 +86,46 @@ class DirectPdfTests(unittest.TestCase):
             app.destroy()
 
 
+class ClipboardTempFileTests(unittest.TestCase):
+    """붙여넣기한 이미지는 임시 PNG 로 떨궈 파일 불러오기와 같은 경로를 타야 한다."""
+
+    def _paste(self, app, image):
+        original = converter_gui.image_from_clipboard
+        converter_gui.image_from_clipboard = lambda: image
+        try:
+            app.paste_image()
+        finally:
+            converter_gui.image_from_clipboard = original
+
+    def test_paste_writes_a_temp_png_that_exists(self):
+        app = converter_gui.ConverterApp()
+        try:
+            self._paste(app, Image.new("RGB", (30, 20), "white"))
+            self.assertIsNotNone(app.temp_image_path)
+            self.assertTrue(app.temp_image_path.is_file())
+            self.assertEqual(app.temp_image_path.suffix, ".png")
+            self.assertIsNotNone(app.current_image)
+        finally:
+            app.destroy()
+
+    def test_loading_another_image_removes_the_previous_temp_png(self):
+        app = converter_gui.ConverterApp()
+        try:
+            self._paste(app, Image.new("RGB", (30, 20), "white"))
+            first = app.temp_image_path
+            self._paste(app, Image.new("RGB", (40, 25), "white"))
+            self.assertFalse(first.exists(), "이전 임시 PNG 가 남아 있습니다")
+            self.assertTrue(app.temp_image_path.is_file())
+        finally:
+            app.destroy()
+
+    def test_closing_the_app_removes_the_temp_png(self):
+        app = converter_gui.ConverterApp()
+        self._paste(app, Image.new("RGB", (30, 20), "white"))
+        path = app.temp_image_path
+        app.close()
+        self.assertFalse(path.exists(), "창을 닫았는데 임시 PNG 가 남아 있습니다")
+
+
 if __name__ == "__main__":
     unittest.main()

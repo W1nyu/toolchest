@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import shutil
+import tempfile
 import threading
 import tkinter as tk
 from pathlib import Path
@@ -38,6 +40,7 @@ class ConverterApp(tk.Tk):
         self.current_image: Image.Image | None = None
         self.last_result = None
         self.preview_photo: ImageTk.PhotoImage | None = None
+        self.temp_image_path: Path | None = None
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -52,6 +55,7 @@ class ConverterApp(tk.Tk):
         self._build_file_ui(file_tab)
         self._build_web_ui(web_tab)
         self._build_image_ui(image_tab)
+        self.protocol("WM_DELETE_WINDOW", self.close)
         self.bind_all("<Control-v>", self._on_paste_shortcut)
         self.bind_all("<Control-V>", self._on_paste_shortcut)
 
@@ -234,6 +238,7 @@ class ConverterApp(tk.Tk):
         return "break"
 
     def _show_image(self, image: Image.Image, label: str) -> None:
+        self._discard_temp_image()
         self.current_image = image
         self.last_result = None
         self.image_text.delete("1.0", "end")
@@ -260,13 +265,40 @@ class ConverterApp(tk.Tk):
         self.image_status.set("텍스트 추출을 누르세요.")
 
     def paste_image(self) -> None:
+        """클립보드 이미지를 임시 PNG 로 떨군 뒤 파일과 똑같은 경로로 읽는다.
+
+        메모리에 있는 클립보드 이미지를 그대로 쓰면 파일에서 연 것과 미묘하게
+        다를 수 있다. 한 번 PNG 로 저장했다가 다시 읽으면 두 경로가 완전히
+        같아진다. 이 임시 파일은 다음 이미지를 넣거나 창을 닫을 때 지운다.
+        """
         try:
-            image = image_from_clipboard()
+            pasted = image_from_clipboard()
         except OcrError as exc:
             messagebox.showwarning("붙여넣기 실패", str(exc))
             return
-        self._show_image(image, "클립보드 이미지")
-        self.image_status.set("텍스트 추출을 누르세요.")
+        workspace = Path(tempfile.mkdtemp(prefix="clipboard_"))
+        path = workspace / "clipboard.png"
+        try:
+            pasted.save(path, format="PNG")
+            image = load_image(path)
+        except (OSError, ValueError, OcrError) as exc:
+            shutil.rmtree(workspace, ignore_errors=True)
+            messagebox.showerror("붙여넣기 실패", str(exc))
+            return
+        self._show_image(image, path.name)
+        self.temp_image_path = path
+        self.image_status.set("텍스트 추출 또는 PDF로 바로 저장을 누르세요.")
+
+    def _discard_temp_image(self) -> None:
+        """붙여넣기로 만들어 둔 임시 PNG 와 그 폴더를 지운다."""
+        if self.temp_image_path is None:
+            return
+        shutil.rmtree(self.temp_image_path.parent, ignore_errors=True)
+        self.temp_image_path = None
+
+    def close(self) -> None:
+        self._discard_temp_image()
+        self.destroy()
 
     def start_image_conversion(self) -> None:
         if self.current_image is None:
