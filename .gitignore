@@ -10,3 +10,7 @@ dist/
 # Conversion outputs
 converted/
 images/
+output/
+
+# Agent scratch
+.superpowers/

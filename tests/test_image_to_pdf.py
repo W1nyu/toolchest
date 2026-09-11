@@ -1,9 +1,12 @@
 import re
 import tempfile
 import unittest
+import sys
 from pathlib import Path
 
 from PIL import Image
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import image_to_pdf
 from image_to_text import OcrLine, OcrResult
@@ -73,7 +76,61 @@ class BuildSearchablePdfTests(unittest.TestCase):
             matches = re.findall(rb"1 0 0 1 ([\d.]+) ([\d.]+) Tm", stream)
             self.assertTrue(matches, "텍스트 위치 지정 연산자를 찾지 못했습니다")
             self.assertAlmostEqual(float(matches[0][0]), 5.0, places=1)
-            self.assertAlmostEqual(float(matches[0][1]), 78.0, places=1)
+            # 상자 아래 78.0 에서 내림폭(size 12 * 0.2)만큼 올라간 자리가 기준선이다.
+            self.assertAlmostEqual(float(matches[0][1]), 80.4, places=1)
+
+
+class SelectableAreaTests(unittest.TestCase):
+    @unittest.skipUnless(PdfReader is not None, "pypdf가 설치되어 있지 않습니다")
+    def test_invisible_text_covers_the_whole_line_height(self):
+        # 선택 가능한 구간이 인식된 글자 상자를 덮어야 한다. 아래쪽에만 얹히면
+        # 줄 윗부분을 드래그했을 때 아무것도 잡히지 않는다.
+        result = OcrResult(
+            text="",
+            lines=(OcrLine(text="가나다라", x=10.0, y=20.0, width=180.0, height=24.0),),
+            language="ko",
+            scale=1.0,
+        )
+        with tempfile.TemporaryDirectory() as workspace:
+            target = Path(workspace) / "cover.pdf"
+            image_to_pdf.build_searchable_pdf(
+                Image.new("RGB", (200, 100), "white"), result, target)
+            stream = PdfReader(str(target)).pages[0].get_contents().get_data()
+        # reportlab 은 텍스트 객체를 만들 때 기본 "12 Tf" 를 먼저 뱉는다.
+        # 우리가 지정한 크기는 그 뒤에 오므로 마지막 것을 본다.
+        size = float(re.findall(rb"/\S+ ([\d.]+) Tf", stream)[-1])
+        baseline = float(re.findall(rb"1 0 0 1 [\d.]+ ([\d.]+) Tm", stream)[0])
+        box_bottom, box_top = 100.0 - 20.0 - 24.0, 100.0 - 20.0
+        selectable_bottom = baseline - 0.2 * size
+        selectable_top = baseline + 0.8 * size
+        covered = min(selectable_top, box_top) - max(selectable_bottom, box_bottom)
+        self.assertGreaterEqual(
+            covered / 24.0, 0.9,
+            "선택 가능한 세로 구간이 글자 상자의 90%%에 못 미칩니다: %.0f%%" % (covered / 24.0 * 100),
+        )
+
+
+class ReadingOrderTests(unittest.TestCase):
+    @unittest.skipUnless(PdfReader is not None, "pypdf가 설치되어 있지 않습니다")
+    def test_text_is_written_top_to_bottom_not_in_ocr_order(self):
+        # Windows OCR 은 표를 열 단위로 뱉어 줄 순서가 뒤섞여 돌아온다.
+        # PDF 에 그 순서대로 쓰면 전체 선택 복사가 뒤죽박죽 나오므로,
+        # 읽는 순서로 정렬해서 써야 한다.
+        lines = (
+            OcrLine(text="아래줄", x=10.0, y=200.0, width=80.0, height=20.0),
+            OcrLine(text="윗줄", x=10.0, y=10.0, width=80.0, height=20.0),
+            OcrLine(text="윗줄오른쪽", x=200.0, y=10.0, width=80.0, height=20.0),
+        )
+        result = OcrResult(text="", lines=lines, language="ko", scale=1.0)
+        with tempfile.TemporaryDirectory() as workspace:
+            target = Path(workspace) / "order.pdf"
+            image_to_pdf.build_searchable_pdf(
+                Image.new("RGB", (400, 300), "white"), result, target)
+            seen = []
+            PdfReader(str(target)).pages[0].extract_text(
+                visitor_text=lambda t, cm, tm, f, sz: (
+                    seen.append(t.strip()) if t.strip() else None))
+            self.assertEqual(seen, ["윗줄", "윗줄오른쪽", "아래줄"])
 
 
 if __name__ == "__main__":

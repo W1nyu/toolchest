@@ -1,8 +1,12 @@
 """Headless tests for converter_gui.ConverterApp's image tab guards."""
 
 import unittest
+import sys
+from pathlib import Path
 
 from PIL import Image
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import converter_gui
 
@@ -55,6 +59,29 @@ class PasteShortcutGuardTests(unittest.TestCase):
 
             self.assertEqual(calls, [True])
             self.assertEqual(result, "break")
+        finally:
+            app.destroy()
+
+
+class DirectPdfTests(unittest.TestCase):
+    def test_direct_pdf_refuses_when_no_image_is_loaded(self):
+        # 이미지 없이 눌러도 파일 대화상자를 열거나 예외를 내지 않아야 한다.
+        app = converter_gui.ConverterApp()
+        try:
+            warned = []
+            app_messagebox = converter_gui.messagebox
+            original = app_messagebox.showwarning
+            app_messagebox.showwarning = lambda *a, **k: warned.append(a)
+            opened = []
+            original_dialog = converter_gui.filedialog.asksaveasfilename
+            converter_gui.filedialog.asksaveasfilename = lambda *a, **k: opened.append(a) or ""
+            try:
+                app.start_direct_pdf()
+            finally:
+                app_messagebox.showwarning = original
+                converter_gui.filedialog.asksaveasfilename = original_dialog
+            self.assertTrue(warned, "이미지가 없는데 경고가 뜨지 않았습니다")
+            self.assertFalse(opened, "이미지가 없는데 저장 대화상자가 열렸습니다")
         finally:
             app.destroy()
 

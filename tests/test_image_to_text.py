@@ -1,8 +1,11 @@
 import tempfile
 import unittest
+import sys
 from pathlib import Path
 
 from PIL import Image
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import image_to_text
 from image_to_text import OcrLine
@@ -23,6 +26,36 @@ class GroupLinesTests(unittest.TestCase):
     def test_lines_at_same_height_are_joined_by_tab_in_x_order(self):
         lines = [line("내용", 100, 0), line("구분", 0, 0)]
         self.assertEqual(image_to_text.group_lines(lines), "구분\t내용")
+
+    def test_orphan_content_keeps_its_column(self):
+        # 라벨과 내용이 나란히 잡힌 행이 열 위치를 알려주므로,
+        # 라벨 없이 혼자 있는 내용 줄도 같은 열에 들어가야 한다.
+        lines = [
+            line("지원자격", 0, 0),
+            line("병역필 또는 면제자", 400, 0),
+            line("전공 무관", 400, 20),
+        ]
+        self.assertEqual(
+            image_to_text.group_lines(lines),
+            "지원자격\t병역필 또는 면제자\n\t전공 무관",
+        )
+
+    def test_third_column_content_is_padded_to_its_own_column(self):
+        lines = [
+            line("모집분야", 0, 0),
+            line("세부직무", 300, 0),
+            line("직무내용", 700, 0),
+            line("카드 상품별 기획", 700, 20),
+        ]
+        self.assertEqual(
+            image_to_text.group_lines(lines),
+            "모집분야\t세부직무\t직무내용\n\t\t카드 상품별 기획",
+        )
+
+    def test_text_without_any_paired_row_is_left_unpadded(self):
+        # 열 정보를 알려주는 행이 하나도 없으면 그대로 둔다.
+        lines = [line("첫 줄", 100, 0), line("둘째 줄", 100, 20)]
+        self.assertEqual(image_to_text.group_lines(lines), "첫 줄\n둘째 줄")
 
     def test_band_does_not_chain_beyond_its_first_line(self):
         # A(y 0~10)와 B(y 5~15)는 5만큼 겹쳐 같은 행이다.
@@ -131,18 +164,18 @@ class LoadImageTests(unittest.TestCase):
 @unittest.skipUnless(HAS_KOREAN_RECOGNIZER, "한국어 인식기가 설치되어 있지 않습니다")
 class SamplePosterTests(unittest.TestCase):
     def test_recruitment_poster_yields_its_key_phrases(self):
-        result = image_to_text.image_to_text(Path("ex.png"))
+        result = image_to_text.image_to_text(Path(__file__).resolve().parents[1] / "assets" / "samples" / "ex.png")
         self.assertIn("2026 신입 인재 모집", result.text)
         self.assertIn("여의도 본사 근무", result.text)
         self.assertIn("모집분야", result.text)
 
     def test_table_label_and_content_land_on_the_same_row(self):
-        result = image_to_text.image_to_text(Path("ex.png"))
+        result = image_to_text.image_to_text(Path(__file__).resolve().parents[1] / "assets" / "samples" / "ex.png")
         rows = [row for row in result.text.splitlines() if row.startswith("근무지\t")]
         self.assertTrue(rows, "'근무지' 항목이 내용과 같은 행으로 묶이지 않았습니다")
 
     def test_every_stored_line_is_already_filtered(self):
-        result = image_to_text.image_to_text(Path("ex.png"))
+        result = image_to_text.image_to_text(Path(__file__).resolve().parents[1] / "assets" / "samples" / "ex.png")
         for stored in result.lines:
             with self.subTest(text=stored.text):
                 self.assertEqual(

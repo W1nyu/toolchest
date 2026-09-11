@@ -24,7 +24,7 @@
   </style>
 </head>
 <body>
-  <nav class="global-nav"><a href="./README.md">Toolchest</a><a href="./fileConverter_GUIDE.html">File Converter</a><a href="./articleConverter_GUIDE.html">Article Converter</a><strong>Local tools. No upload.</strong></nav>
+  <nav class="global-nav"><a href="../../README.md">Toolchest</a><a href="./fileConverter_GUIDE.html">File Converter</a><a href="./articleConverter_GUIDE.html">Article Converter</a><strong>Local tools. No upload.</strong></nav>
   <nav class="sub-nav"><b>imageConverter</b><a class="pill" href="#start">바로 시작하기</a></nav>
 
   <header class="hero">
@@ -43,7 +43,7 @@
       <div class="steps">
         <article class="card"><span class="number">01</span><h3>Python 설치</h3><p>Python 3.10 이상을 설치합니다. 설치 화면에서 <b>Add Python to PATH</b>를 선택하세요.</p></article>
         <article class="card"><span class="number">02</span><h3>한국어 인식기 확인</h3><p>대부분의 Windows 11에는 기본으로 들어 있습니다. 없다면 설정 → 시간 및 언어 → 언어 및 지역 → 한국어의 언어 옵션에서 <b>광학 문자 인식</b>을 설치하세요.</p></article>
-        <article class="card"><span class="number">03</span><h3>앱 실행</h3><p>로컬_변환기_실행.bat를 더블클릭한 뒤 <b>이미지 텍스트</b> 탭을 엽니다. 별도 실행 파일은 없습니다.</p></article>
+        <article class="card"><span class="number">03</span><h3>앱 실행</h3><p>scripts 폴더의 로컬_변환기_실행.bat를 더블클릭한 뒤 <b>이미지 텍스트</b> 탭을 엽니다. 별도 실행 파일은 없습니다.</p></article>
       </div>
       <p class="note">이 기능은 Windows 내장 OCR(Windows.Media.Ocr)만 사용합니다. 별도 Python 패키지 설치, 계정 등록, API 키가 필요 없습니다.</p>
     </div>
@@ -54,26 +54,27 @@
       <p class="kicker" style="color:#2997ff">DESKTOP APP</p>
       <h2>넣고, 추출하고, 고치고, 저장까지 한 화면에서.</h2>
       <p class="lead">파일 변환기와 같은 앱의 <b>이미지 텍스트</b> 탭입니다. 이미지를 불러오면 미리보기와 함께 <b>파일명 · 너비×높이</b>가 표시되고, 텍스트 추출 뒤에는 결과를 직접 고칠 수 있는 편집창이 열립니다.</p>
-      <code>로컬_변환기_실행.bat
+      <code>scripts\로컬_변환기_실행.bat
 
 또는
 
-python converter_gui.py</code>
+python src\converter_gui.py</code>
       <div class="guide-grid" style="margin-top:42px">
-        <div><h3>기본 흐름</h3><ol><li><b>이미지 텍스트</b> 탭을 엽니다.</li><li><b>이미지 불러오기</b>를 누르거나, 편집창 밖에 커서를 둔 채 <b>Ctrl+V</b>로 복사한 이미지를 붙여넣습니다.</li><li><b>텍스트 추출</b>을 눌러 인식을 시작합니다.</li><li>편집창에서 오타를 고칩니다.</li><li><b>전체 복사</b>, <b>.txt 저장</b>, <b>.md 저장</b>, <b>PDF 저장</b> 중 필요한 방식을 선택합니다.</li></ol></div>
+        <div><h3>기본 흐름</h3><ol><li><b>이미지 텍스트</b> 탭을 엽니다.</li><li><b>이미지 불러오기</b>를 누르거나, 편집창 밖에 커서를 둔 채 <b>Ctrl+V</b>로 복사한 이미지를 붙여넣습니다.</li><li><b>텍스트 추출</b> 또는 <b>PDF로 바로 저장</b>을 눌러 인식을 시작합니다.</li><li>편집창에서 오타를 고칩니다.</li><li><b>전체 복사</b>, <b>.txt 저장</b>, <b>.md 저장</b>, <b>PDF 저장</b> 중 필요한 방식을 선택합니다.</li></ol></div>
         <div><h3>알아둘 점</h3><ul><li>Ctrl+V는 편집창 밖에 초점이 있을 때만 이미지를 붙여넣습니다. 편집창 안에서는 평범한 텍스트 붙여넣기로 동작합니다.</li><li>표처럼 배치된 내용은 같은 줄로 인식된 항목이 탭으로 구분되어 나오므로, 엑셀이나 노션에 그대로 붙여넣으면 열이 나뉩니다.</li><li>인식이 틀리게 읽은 글자를 다른 글자로 추측해 고쳐주지는 않습니다. 잘못 읽은 글자는 편집창에서 직접 고쳐야 합니다.</li><li>PDF 저장은 텍스트 추출 시점의 인식 결과를 그대로 사용합니다. <b>편집창에서 고친 내용은 PDF에 반영되지 않습니다</b> — 고친 내용을 남기려면 .txt 또는 .md로 저장하세요.</li></ul></div>
       </div>
     </div>
-  </section>
+        <p class="note">표가 많은 이미지라면 <b>PDF로 바로 저장</b>을 권합니다. 텍스트로 펼치면 행과 열을 맞춰야 하지만, PDF는 원본 레이아웃 위에 글자를 제자리에 얹으므로 열이 어긋날 일이 없습니다. 필요한 부분만 드래그해 복사하세요.</p>
+</section>
 
   <section class="tile dark2">
     <div class="guide">
       <p class="kicker" style="color:#2997ff">COMMAND LINE</p>
       <h2>반복 작업이나 스크립트에는 명령줄로.</h2>
-      <div class="rule"><h3>기본 실행 (표준 출력)</h3><code>python image_to_text.py ex.png</code></div>
-      <div class="rule"><h3>텍스트 파일로 저장</h3><code>python image_to_text.py ex.png --output result.txt</code></div>
-      <div class="rule"><h3>검색 가능한 PDF로 저장</h3><code>python image_to_text.py ex.png --pdf result.pdf</code></div>
-      <div class="rule"><h3>클립보드 이미지, 확대 배율 올리기</h3><code>python image_to_text.py --scale 3</code></div>
+      <div class="rule"><h3>기본 실행 (표준 출력)</h3><code>python src\image_to_text.py assets\samples\ex.png</code></div>
+      <div class="rule"><h3>텍스트 파일로 저장</h3><code>python src\image_to_text.py assets\samples\ex.png --output result.txt</code></div>
+      <div class="rule"><h3>검색 가능한 PDF로 저장</h3><code>python src\image_to_text.py assets\samples\ex.png --pdf result.pdf</code></div>
+      <div class="rule"><h3>클립보드 이미지, 확대 배율 올리기</h3><code>python src\image_to_text.py --scale 3</code></div>
       <p class="note">이미지 경로를 생략하면 클립보드에 있는 이미지를 사용합니다. --scale의 기본값은 2로, 인식 전에 이미지를 그만큼 확대해 정확도를 높입니다. 작은 글자가 잘 안 읽히면 배율을 올려보세요.</p>
     </div>
   </section>
@@ -103,6 +104,6 @@ python converter_gui.py</code>
     </div>
   </section>
 
-  <footer><div class="inner">imageConverter · Local image-to-text tool · <a href="./README.md">README 열기</a> · <a href="./fileConverter_GUIDE.html">File Converter 가이드</a> · <a href="./articleConverter_GUIDE.html">Article Converter 가이드</a></div></footer>
+  <footer><div class="inner">imageConverter · Local image-to-text tool · <a href="../../README.md">README 열기</a> · <a href="./fileConverter_GUIDE.html">File Converter 가이드</a> · <a href="./articleConverter_GUIDE.html">Article Converter 가이드</a></div></footer>
 </body>
 </html>

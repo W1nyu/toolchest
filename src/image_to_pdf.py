@@ -9,10 +9,11 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfgen import canvas
 
-from image_to_text import OcrError, OcrResult
+from image_to_text import OcrError, OcrResult, reading_order
 from web_to_pdf import korean_font_name
 
 MAX_PDF_POINTS = 14400.0
+DESCENDER_RATIO = 0.2  # 기준선 아래로 내려가는 글자의 비율
 INVISIBLE_TEXT = 3  # PDF 텍스트 렌더 모드: 그리지 않는다. 선택은 된다.
 
 
@@ -57,17 +58,25 @@ def build_searchable_pdf(
     # setTextOrigin()을 부르면 처음 위치(0, 0)가 헛되이 먼저 찍히므로, 첫 줄의
     # 실제 좌표로 바로 생성해 불필요한 원점 연산자가 남지 않게 한다.
     text_object = None
-    for stored in result.lines:
+    # OCR 이 돌려준 순서가 아니라 읽는 순서로 쓴다. 그래야 전체 선택 복사가
+    # 원본을 읽는 순서대로 나온다.
+    for stored in [line for band in reading_order(result.lines) for line in band]:
         box_width = stored.width * to_page
         box_height = stored.height * to_page
         if box_width <= 0 or box_height <= 0 or not stored.text:
             continue
-        size = max(1.0, box_height * 0.8)
+        # 글자 크기를 상자 높이에 맞추고 기준선을 내림폭만큼 띄운다. 그래야 선택
+        # 가능한 세로 구간이 인식된 글자 상자를 그대로 덮는다. 예전처럼 상자 높이의
+        # 0.8배를 상자 맨 아래에 얹으면 아래쪽 64%만 잡혀서, 줄 윗부분을 드래그하면
+        # 아무것도 선택되지 않았다.
+        size = max(1.0, box_height)
         natural = pdfmetrics.stringWidth(stored.text, font, size)
         if natural <= 0:
             continue
         origin_x = stored.x * to_page
-        origin_y = page_height - stored.y * to_page - box_height
+        origin_y = (
+            page_height - stored.y * to_page - box_height + size * DESCENDER_RATIO
+        )
         if text_object is None:
             text_object = pdf.beginText(origin_x, origin_y)
             text_object.setTextRenderMode(INVISIBLE_TEXT)

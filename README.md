@@ -2,6 +2,18 @@
 
 인터넷에 파일을 업로드하지 않고 PC에서 미디어와 문서를 변환하는 로컬 도구입니다. CLI와 Windows GUI를 제공합니다. 웹페이지는 주소만 입력하면 광고·메뉴·댓글을 제외한 본문과 본문 이미지를 PDF로 저장할 수 있습니다. 이미지 속 글자는 Windows 내장 OCR로 추출해 텍스트나 검색 가능한 PDF로 저장할 수 있습니다.
 
+## 폴더 구조
+
+~~~text
+src/            실행 코드와 Windows OCR 브리지
+scripts/        Windows 실행 스크립트
+tests/          자동 테스트
+docs/guides/    도구별 HTML 사용 가이드
+docs/design/    디자인 참고 자료
+assets/samples/ 예제 이미지
+output/         생성된 결과물 (Git 추적 제외)
+~~~
+
 ## 지원 범위
 
 - 미디어: FFmpeg가 지원하는 모든 입력/출력 형식. 하드코딩된 확장자 목록으로 제한하지 않으므로 FFmpeg 버전에 포함된 형식을 그대로 사용할 수 있습니다.
@@ -11,7 +23,7 @@
 - PDF -> JPG/PNG: 여러 페이지를 페이지별 이미지로 자동 저장합니다. 기본 해상도는 150 DPI입니다.
 - Office 문서 압축: `DOCX/PPTX/XLSX -> PDF` 변환과 동시에 PDF를 압축합니다. Office 원본 내부 이미지까지 재압축하는 작업은 원본 레이아웃 손상 위험 때문에 자동 처리하지 않습니다.
 - 웹 본문 PDF: 일반 기사·블로그 본문을 자동 탐지하고, DCInside 게시글은 본문 영역을 우선 인식합니다. 본문 안의 이미지도 순서대로 넣습니다.
-- 이미지 텍스트: `image_to_text.py`가 Windows 내장 OCR(`win_ocr.ps1`)로 이미지에서 한국어·영어 텍스트를 추출합니다. 표처럼 같은 줄에 배치된 항목은 탭으로 구분되어 나오므로 엑셀·노션에 붙여넣기 좋습니다. `image_to_pdf.py`로 원본 이미지 위에 보이지 않는 텍스트 레이어를 얹은 검색 가능한 PDF도 만들 수 있습니다.
+- 이미지 텍스트: `src/image_to_text.py`가 Windows 내장 OCR(`src/win_ocr.ps1`)로 이미지에서 한국어·영어 텍스트를 추출합니다. 표처럼 같은 줄에 배치된 항목은 탭으로 구분되어 나오므로 엑셀·노션에 붙여넣기 좋습니다. `src/image_to_pdf.py`로 원본 이미지 위에 보이지 않는 텍스트 레이어를 얹은 검색 가능한 PDF도 만들 수 있습니다.
 
 ## 설치
 
@@ -34,10 +46,10 @@ FFmpeg와 LibreOffice를 설치한 뒤 새 터미널을 열어주세요. 프로�
 
 ## GUI 실행
 
-Windows에서 `로컬_변환기_실행.bat`을 더블클릭하거나 다음 명령을 실행합니다.
+Windows에서 `scripts/로컬_변환기_실행.bat`을 더블클릭하거나 다음 명령을 실행합니다.
 
 ```powershell
-python converter_gui.py
+python src/converter_gui.py
 ```
 
 GUI에서 파일 선택 -> 변환 형식 선택 또는 직접 입력 -> 출력 폴더 선택 -> 변환 시작 순서로 사용합니다. `mp3`, `wav`, `mp4`, `pdf` 외에도 FFmpeg가 지원하는 형식을 직접 입력할 수 있습니다.
@@ -49,23 +61,23 @@ GUI에서 파일 선택 -> 변환 형식 선택 또는 직접 입력 -> 출력 �
 ## CLI 실행
 
 ```powershell
-python local_converter.py video.mp4 --to mp3
-python local_converter.py slides.pptx --to pdf --output-dir converted
-python local_converter.py report.docx --to pdf --overwrite
-python local_converter.py report.pdf --to pdf --compress --quality ebook --overwrite
-python local_converter.py report.docx --to pdf --compress --quality screen --overwrite
-python local_converter.py manual.pdf --to jpg --output-dir images --dpi 200
-python web_to_pdf.py "https://gall.dcinside.com/mgallery/board/view/?id=backend&no=58539"
-python web_to_pdf.py "https://example.com/article" --output-dir saved-pdfs --include-source
-python image_to_text.py ex.png
-python image_to_text.py ex.png --output result.txt
-python image_to_text.py ex.png --pdf result.pdf
-python image_to_text.py --scale 3
+python src/local_converter.py video.mp4 --to mp3
+python src/local_converter.py slides.pptx --to pdf --output-dir converted
+python src/local_converter.py report.docx --to pdf --overwrite
+python src/local_converter.py report.pdf --to pdf --compress --quality ebook --overwrite
+python src/local_converter.py report.docx --to pdf --compress --quality screen --overwrite
+python src/local_converter.py manual.pdf --to jpg --output-dir images --dpi 200
+python src/web_to_pdf.py "https://gall.dcinside.com/mgallery/board/view/?id=backend&no=58539"
+python src/web_to_pdf.py "https://example.com/article" --output-dir saved-pdfs --include-source
+python src/image_to_text.py assets/samples/ex.png
+python src/image_to_text.py assets/samples/ex.png --output result.txt
+python src/image_to_text.py assets/samples/ex.png --pdf result.pdf
+python src/image_to_text.py --scale 3
 ```
 
 PDF를 이미지로 바꾸려면 Poppler의 `pdftoppm` 또는 `pdftocairo`를 설치하고 PATH에 추가해야 합니다.
 
-`image_to_text.py`는 이미지 경로를 생략하면 클립보드의 이미지를 사용합니다. `--scale`의 기본값은 2로, 인식 전에 이미지를 그만큼 확대해 정확도를 높입니다.
+`src/image_to_text.py`는 이미지 경로를 생략하면 클립보드의 이미지를 사용합니다. `--scale`의 기본값은 2로, 인식 전에 이미지를 그만큼 확대해 정확도를 높입니다.
 
 모든 변환은 로컬 프로세스로 처리하며 파일을 외부 서버에 전송하지 않습니다.
 

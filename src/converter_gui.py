@@ -117,9 +117,14 @@ class ConverterApp(tk.Tk):
         self.preview_label = ttk.Label(frame)
         self.preview_label.grid(row=1, column=0, columnspan=3, sticky="w", pady=10)
 
+        run_row = ttk.Frame(frame)
+        run_row.grid(row=2, column=2, sticky="e")
+        self.direct_pdf_button = ttk.Button(
+            run_row, text="PDF로 바로 저장", command=self.start_direct_pdf)
+        self.direct_pdf_button.pack(side="left", padx=(0, 8))
         self.image_button = ttk.Button(
-            frame, text="텍스트 추출", command=self.start_image_conversion)
-        self.image_button.grid(row=2, column=2, sticky="e")
+            run_row, text="텍스트 추출", command=self.start_image_conversion)
+        self.image_button.pack(side="left")
 
         self.image_text = scrolledtext.ScrolledText(frame, wrap="word", height=12)
         self.image_text.grid(row=3, column=0, columnspan=3, sticky="nsew", pady=10)
@@ -345,6 +350,57 @@ class ConverterApp(tk.Tk):
             f"PDF 저장 완료: {path} · PDF에는 인식 원본이 들어갑니다. "
             "편집창에서 고친 내용은 반영되지 않습니다."
         )
+
+
+    def start_direct_pdf(self) -> None:
+        """텍스트 추출 단계를 거치지 않고 이미지에서 곧장 검색 가능한 PDF를 만든다.
+
+        표가 있는 이미지는 텍스트로 펼치면 행과 열을 맞춰야 하지만, PDF 는 원본
+        레이아웃 위에 글자를 제자리에 얹으므로 그 문제가 아예 생기지 않는다.
+        """
+        if self.current_image is None:
+            messagebox.showwarning("이미지 필요", "이미지를 불러오거나 Ctrl+V로 붙여넣으세요.")
+            return
+        path = filedialog.asksaveasfilename(
+            title="검색 가능한 PDF 저장",
+            defaultextension=".pdf",
+            filetypes=[("PDF 파일", "*.pdf")],
+        )
+        if not path:
+            return
+        self.image_button.configure(state="disabled")
+        self.direct_pdf_button.configure(state="disabled")
+        self.image_status.set("문자를 인식해 PDF를 만드는 중입니다...")
+        threading.Thread(
+            target=self._direct_pdf, args=(Path(path),), daemon=True).start()
+
+    def _direct_pdf(self, destination: Path) -> None:
+        try:
+            result = image_to_text(self.current_image)
+            build_searchable_pdf(
+                self.current_image, result, destination, overwrite=True)
+        except (OcrError, OSError) as exc:
+            self.after(0, self._finish_direct_pdf_error, str(exc))
+        else:
+            self.after(0, self._finish_direct_pdf_success, result, destination)
+
+    def _enable_image_buttons(self) -> None:
+        self.image_button.configure(state="normal")
+        self.direct_pdf_button.configure(state="normal")
+
+    def _finish_direct_pdf_success(self, result, destination: Path) -> None:
+        self._enable_image_buttons()
+        self.last_result = result
+        self.image_text.delete("1.0", "end")
+        self.image_text.insert("1.0", result.text)
+        self.image_status.set(
+            f"PDF 저장 완료: {destination} · 원본 위에서 글자를 드래그해 복사할 수 있습니다."
+        )
+
+    def _finish_direct_pdf_error(self, error: str) -> None:
+        self._enable_image_buttons()
+        self.image_status.set(f"PDF 저장 실패: {error}")
+        messagebox.showerror("PDF 저장 실패", error)
 
 
 if __name__ == "__main__":

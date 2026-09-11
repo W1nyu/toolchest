@@ -16,6 +16,7 @@ from typing import Sequence
 from PIL import Image, ImageGrab
 
 ROW_OVERLAP_RATIO = 0.5
+COLUMN_TOLERANCE_LINES = 2
 DEFAULT_TIMEOUT = 60
 MAX_IMAGE_DIMENSION = 10000
 DEFAULT_SCALE = 2.0
@@ -64,6 +65,50 @@ def filter_characters(text: str) -> str:
     return _WHITESPACE_RUN.sub(" ", _DISALLOWED.sub("", text)).strip()
 
 
+def reading_order(lines: Sequence[OcrLine]) -> tuple[tuple[OcrLine, ...], ...]:
+    """줄을 사람이 읽는 순서의 행 묶음으로 정리한다.
+
+    Windows OCR 은 표를 열 단위로 훑어 줄 순서가 뒤섞인 채 돌아온다. 텍스트 출력과
+    PDF 텍스트 레이어가 같은 순서를 쓰도록, 정렬 규칙을 한곳에 둔다.
+    """
+    ordered = sorted(lines, key=lambda item: (item.y, item.x))
+    bands: list[list[OcrLine]] = []
+    for item in ordered:
+        if bands and _same_row(bands[-1][0], item):
+            bands[-1].append(item)
+        else:
+            bands.append([item])
+    return tuple(tuple(sorted(band, key=lambda item: item.x)) for band in bands)
+
+
+def _column_anchors(bands: Sequence[Sequence[OcrLine]]) -> tuple[float, ...]:
+    """열이 시작되는 x 좌표를 모은다.
+
+    표의 열 위치는 라벨과 내용이 나란히 잡힌 행에서만 드러난다. 그렇게 얻은
+    앵커가 있어야, 라벨 없이 혼자 있는 내용 줄도 제 열에 넣어줄 수 있다.
+    나란히 잡힌 행이 하나도 없으면 열을 추측하지 않는다.
+    """
+    starts = sorted(line.x for band in bands if len(band) > 1 for line in band)
+    if not starts:
+        return ()
+    heights = sorted(line.height for band in bands for line in band)
+    # 같은 열이라도 글머리 기호나 표마다 다른 들여쓰기 때문에 시작 x 가 흔들린다.
+    # 실측(ex.png)에서 열 안쪽 흔들림은 최대 57px, 열 사이 간격은 최소 157px 이었다.
+    # 줄 높이 두 개분이 그 사이에 들어와 둘을 갈라준다.
+    tolerance = heights[len(heights) // 2] * COLUMN_TOLERANCE_LINES
+    groups = [[starts[0]]]
+    for x in starts[1:]:
+        if x - groups[-1][-1] > tolerance:
+            groups.append([x])
+        else:
+            groups[-1].append(x)
+    return tuple(group[len(group) // 2] for group in groups)
+
+
+def _column_index(x: float, anchors: Sequence[float]) -> int:
+    return min(range(len(anchors)), key=lambda index: abs(x - anchors[index]))
+
+
 def group_lines(lines: Sequence[OcrLine]) -> str:
     """줄을 읽는 순서대로 정렬하고, 같은 높이의 줄을 한 행으로 묶는다.
 
@@ -72,17 +117,18 @@ def group_lines(lines: Sequence[OcrLine]) -> str:
     """
     if not lines:
         return ""
-    ordered = sorted(lines, key=lambda item: (item.y, item.x))
-    bands: list[list[OcrLine]] = []
-    for item in ordered:
-        if bands and _same_row(bands[-1][0], item):
-            bands[-1].append(item)
-        else:
-            bands.append([item])
+    bands = reading_order(lines)
+    anchors = _column_anchors(bands)
     rows = []
     for band in bands:
-        band.sort(key=lambda item: item.x)
-        rows.append("\t".join(item.text for item in band))
+        if not anchors:
+            rows.append("\t".join(item.text for item in band))
+            continue
+        cells: dict[int, list[str]] = {}
+        for item in band:
+            cells.setdefault(_column_index(item.x, anchors), []).append(item.text)
+        last = max(cells)
+        rows.append("\t".join(" ".join(cells.get(index, ())) for index in range(last + 1)))
     return "\n".join(rows)
 
 
