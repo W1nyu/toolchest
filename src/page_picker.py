@@ -70,11 +70,16 @@ class PagePicker(ttk.Frame):
         self.grid_frame.bind(
             "<Configure>", lambda _event: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
         self.canvas.bind("<Configure>", self._on_canvas_resize)
-        # 두 탭에 피커가 하나씩 있으므로 마우스가 올라와 있을 때만 휠을 받는다.
-        self.canvas.bind("<Enter>", lambda _event: self.canvas.bind_all("<MouseWheel>", self._on_wheel))
-        self.canvas.bind("<Leave>", lambda _event: self.canvas.unbind_all("<MouseWheel>"))
+        # 휠 이벤트는 포커스가 아니라 포인터 아래 위젯에 가야 한다. Tk는 그렇게 주지 않으므로
+        # 전역으로 받되, 포인터가 이 피커 위에 있고 화면에 보일 때만 처리한다.
+        self.canvas.bind_all("<MouseWheel>", self._on_wheel, add="+")
 
     def _on_wheel(self, event: tk.Event) -> None:
+        if not self.canvas.winfo_viewable():
+            return
+        under = self.winfo_containing(event.x_root, event.y_root)
+        if under is None or not str(under).startswith(str(self) + "."):
+            return
         self.canvas.yview_scroll(-int(event.delta / 120), "units")
 
     def _on_canvas_resize(self, event: tk.Event) -> None:
