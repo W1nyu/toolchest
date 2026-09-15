@@ -1,12 +1,16 @@
-"""Headless tests for converter_gui.ConverterApp's image tab guards."""
+"""Headless tests for converter_gui.ConverterApp: tab layout, image-tab guards, PDF merge and split tabs."""
 
+import logging
 import unittest
 import sys
+import tempfile
 from pathlib import Path
 
 from PIL import Image
+from reportlab.pdfgen import canvas
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+logging.getLogger("pypdf").setLevel(logging.ERROR)  # 일부러 망가뜨린 파일에 대한 경고는 테스트 잡음일 뿐이다
 
 import converter_gui
 
@@ -125,6 +129,166 @@ class ClipboardTempFileTests(unittest.TestCase):
         path = app.temp_image_path
         app.close()
         self.assertFalse(path.exists(), "창을 닫았는데 임시 PNG 가 남아 있습니다")
+
+
+def make_pdf(folder: Path, name: str, page_count: int) -> Path:
+    path = folder / name
+    pdf = canvas.Canvas(str(path), pagesize=(300, 400))
+    for number in range(1, page_count + 1):
+        pdf.drawString(50, 350, f"PAGE {number}")
+        pdf.showPage()
+    pdf.save()
+    return path
+
+
+class TabLayoutTests(unittest.TestCase):
+    def test_five_tabs_in_order(self):
+        app = converter_gui.ConverterApp()
+        try:
+            names = [app.notebook.tab(tab, "text") for tab in app.notebook.tabs()]
+            self.assertEqual(names, ["파일 변환", "웹 본문 PDF", "이미지 텍스트", "PDF 합치기", "PDF 분할"])
+        finally:
+            app.destroy()
+
+
+class PdfDestinationTests(unittest.TestCase):
+    def test_adds_pdf_suffix_when_missing(self):
+        self.assertEqual(converter_gui.pdf_destination("C:/out", "name"), Path("C:/out/name.pdf"))
+
+    def test_keeps_existing_suffix_and_strips_spaces(self):
+        self.assertEqual(converter_gui.pdf_destination("C:/out", " name.PDF "), Path("C:/out/name.PDF"))
+
+
+class SplitTabTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.folder = Path(self.tmp.name)
+        self.pdf = make_pdf(self.folder, "doc.pdf", 4)
+        self.app = converter_gui.ConverterApp()
+
+    def tearDown(self):
+        self.app.destroy()
+        self.tmp.cleanup()
+
+    def test_choosing_a_file_loads_thumbnails_and_page_count(self):
+        self.app.set_split_input(self.pdf)
+        self.assertEqual(self.app.split_input.get(), str(self.pdf))
+        self.assertEqual(self.app.split_picker.page_count, 4)
+        self.assertEqual(self.app.split_info.get(), "전체 4쪽")
+        self.assertEqual(self.app.split_pages.get(), "")
+
+    def test_result_name_follows_the_page_field(self):
+        self.app.set_split_input(self.pdf)
+        self.app.split_pages.set("2-4, 7")
+        self.assertEqual(self.app.split_name.get(), "doc_p2-4,7.pdf")
+        self.app.split_picker.toggle(1)
+        self.assertEqual(self.app.split_pages.get(), "1")
+        self.assertEqual(self.app.split_name.get(), "doc_p1.pdf")
+
+    def test_custom_result_name_is_kept(self):
+        self.app.set_split_input(self.pdf)
+        self.app.split_name.set("mine.pdf")
+        self.app.split_pages.set("2")
+        self.assertEqual(self.app.split_name.get(), "mine.pdf")
+
+    def test_new_file_resets_custom_name(self):
+        self.app.set_split_input(self.pdf)
+        self.app.split_name.set("mine.pdf")
+        other = make_pdf(self.folder, "other.pdf", 2)
+        self.app.set_split_input(other)
+        self.assertEqual(self.app.split_name.get(), "other_p.pdf")
+
+    def test_navigation_or_retyping_the_auto_name_keeps_auto_refresh(self):
+        self.app.set_split_input(self.pdf)
+        self.app.split_pages.set("2")
+        self.app.split_name.set(self.app.split_name.get())  # 값이 바뀌지 않는 편집(End, 화살표 등)과 같다
+        self.app.split_pages.set("3")
+        self.assertEqual(self.app.split_name.get(), "doc_p3.pdf")
+
+    def test_unreadable_file_is_reported_and_not_set(self):
+        bad = self.folder / "bad.pdf"
+        bad.write_text("nope", encoding="utf-8")
+        original = converter_gui.messagebox.showerror
+        converter_gui.messagebox.showerror = lambda *args, **kwargs: None  # 모달 창이 테스트를 막지 않게
+        try:
+            self.app.set_split_input(bad)
+        finally:
+            converter_gui.messagebox.showerror = original
+        self.assertEqual(self.app.split_input.get(), "")
+        self.assertEqual(self.app.split_status.get(), "PDF 파일을 읽을 수 없습니다: bad.pdf")
+
+
+class MergeTabTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.folder = Path(self.tmp.name)
+        self.a = make_pdf(self.folder, "a.pdf", 3)
+        self.b = make_pdf(self.folder, "b.pdf", 2)
+        self.app = converter_gui.ConverterApp()
+
+    def tearDown(self):
+        self.app.destroy()
+        self.tmp.cleanup()
+
+    def rows(self):
+        return [self.app.merge_tree.item(iid, "values") for iid in self.app.merge_tree.get_children()]
+
+    def test_adding_files_fills_the_list_and_selects_the_last(self):
+        self.app.add_merge_files([self.a, self.b])
+        self.assertEqual(self.rows(), [("1", "a.pdf", "3", "전체"), ("2", "b.pdf", "2", "전체")])
+        self.assertEqual(self.app.merge_current, 1)
+        self.assertEqual(self.app.merge_picker.page_count, 2)
+        self.assertEqual(self.app.merge_name.get(), "a_합본.pdf")
+
+    def test_page_field_updates_the_selected_row(self):
+        self.app.add_merge_files([self.a, self.b])
+        self.app.select_merge_row(0)
+        self.app.merge_pages.set("1-2")
+        self.assertEqual(self.rows()[0], ("1", "a.pdf", "3", "1-2"))
+        self.assertEqual(self.app.merge_items[0].pages, "1-2")
+        self.assertEqual(self.app.merge_items[1].pages, "")
+
+    def test_switching_rows_restores_each_rows_pages(self):
+        self.app.add_merge_files([self.a, self.b])
+        self.app.select_merge_row(0)
+        self.app.merge_pages.set("3")
+        self.app.select_merge_row(1)
+        self.assertEqual(self.app.merge_pages.get(), "")
+        self.assertEqual(self.app.merge_picker.page_count, 2)
+        self.app.select_merge_row(0)
+        self.assertEqual(self.app.merge_pages.get(), "3")
+        self.assertEqual(self.app.merge_picker.selected_pages(), {3})
+
+    def test_moving_rows_changes_order_and_default_name(self):
+        self.app.add_merge_files([self.a, self.b])
+        self.app.select_merge_row(1)
+        self.app.move_merge_item(-1)
+        self.assertEqual([row[1] for row in self.rows()], ["b.pdf", "a.pdf"])
+        self.assertEqual(self.app.merge_current, 0)
+        self.assertEqual(self.app.merge_name.get(), "b_합본.pdf")
+        self.app.move_merge_item(-1)  # 맨 위에서는 그대로
+        self.assertEqual([row[1] for row in self.rows()], ["b.pdf", "a.pdf"])
+
+    def test_removing_the_last_row_clears_the_picker(self):
+        self.app.add_merge_files([self.a])
+        self.app.remove_merge_item()
+        self.assertEqual(self.rows(), [])
+        self.assertIsNone(self.app.merge_current)
+        self.assertEqual(self.app.merge_picker.page_count, 0)
+
+    def test_custom_name_survives_reordering(self):
+        self.app.add_merge_files([self.a, self.b])
+        self.app.merge_name.set("mine.pdf")
+        self.app.select_merge_row(1)
+        self.app.move_merge_item(-1)
+        self.assertEqual(self.app.merge_name.get(), "mine.pdf")
+
+    def test_unreadable_file_is_skipped_and_reported(self):
+        bad = self.folder / "bad.pdf"
+        bad.write_text("nope", encoding="utf-8")
+        self.app.add_merge_files([bad, self.a])
+        self.assertEqual([row[1] for row in self.rows()], ["a.pdf"])
+        self.assertIn("PDF 파일을 읽을 수 없습니다: bad.pdf", self.app.merge_status.get())
 
 
 if __name__ == "__main__":
