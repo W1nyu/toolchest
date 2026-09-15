@@ -91,7 +91,7 @@ def render_page(path: Path | str, page_number: int, width: int = THUMBNAIL_WIDTH
 
     try:
         document = pdfium.PdfDocument(str(path))
-    except Exception as exc:  # pypdfium2는 열기 실패를 PdfiumError로 올린다
+    except (pdfium.PdfiumError, OSError) as exc:  # pypdfium2는 열기 실패를 PdfiumError로 올린다
         raise PdfPagesError(f"PDF 파일을 읽을 수 없습니다: {Path(path).name}") from exc
     try:
         if not 1 <= page_number <= len(document):

@@ -1,5 +1,6 @@
 """page_picker.PagePicker 헤드리스 테스트. 썸네일 클릭과 페이지 칸이 서로 맞물리는지 본다."""
 
+import logging
 import sys
 import tempfile
 import time
@@ -10,6 +11,7 @@ from pathlib import Path
 from reportlab.pdfgen import canvas
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+logging.getLogger("pypdf").setLevel(logging.ERROR)  # 일부러 망가뜨린 파일에 대한 경고는 테스트 잡음일 뿐이다
 
 import page_picker
 from page_picker import PagePicker

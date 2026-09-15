@@ -1,6 +1,7 @@
 """pdf_pages: 페이지 범위 파싱·표기, 합치기·분할, 썸네일 렌더링 테스트."""
 
 import io
+import logging
 import sys
 import tempfile
 import unittest
@@ -11,6 +12,7 @@ from pypdf import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+logging.getLogger("pypdf").setLevel(logging.ERROR)  # 일부러 망가뜨린 파일에 대한 경고는 테스트 잡음일 뿐이다
 
 import pdf_pages
 from pdf_pages import PdfPagesError, format_page_range, parse_page_range
@@ -148,6 +150,13 @@ class RenderPageTests(unittest.TestCase):
     def test_bad_page_number_is_rejected(self):
         with self.assertRaises(PdfPagesError):
             pdf_pages.render_page(make_pdf(self.folder, "a.pdf", 2), 3)
+
+    def test_unreadable_file_is_rejected(self):
+        bad = self.folder / "bad.pdf"
+        bad.write_text("nope", encoding="utf-8")
+        with self.assertRaises(PdfPagesError) as caught:
+            pdf_pages.render_page(bad, 1)
+        self.assertEqual(str(caught.exception), "PDF 파일을 읽을 수 없습니다: bad.pdf")
 
 
 class MergePdfsTests(unittest.TestCase):
