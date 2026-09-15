@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import os
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 
 from PIL import Image
-from pypdf import PdfReader
+from pypdf import PdfReader, PdfWriter
 from pypdf.errors import PyPdfError
 
 THUMBNAIL_WIDTH = 110  # px
@@ -101,3 +102,64 @@ def render_page(path: Path | str, page_number: int, width: int = THUMBNAIL_WIDTH
             page.close()
     finally:
         document.close()
+
+
+def merged_name(first_source: Path | str) -> str:
+    return f"{Path(first_source).stem}_합본.pdf"
+
+
+def split_name(source: Path | str, pages: str) -> str:
+    return f"{Path(source).stem}_p{re.sub(r'\s+', '', pages)}.pdf"
+
+
+def merge_pdfs(
+    sources: Sequence[tuple[Path | str, str]],
+    destination: Path | str,
+    *,
+    overwrite: bool = False,
+) -> Path:
+    """sources 순서대로, 각 항목의 페이지 지정에 맞는 쪽만 모아 새 PDF를 만든다.
+
+    페이지 문자열이 비어 있으면 그 파일 전체다. 원본은 읽기만 한다.
+    """
+    if len(sources) < 2:
+        raise PdfPagesError("PDF를 2개 이상 지정하세요.")
+    return _assemble(sources, Path(destination), overwrite)
+
+
+def split_pdf(source: Path | str, pages: str, destination: Path | str, *, overwrite: bool = False) -> Path:
+    """한 PDF에서 지정한 쪽만 모아 새 PDF 1개를 만든다. 전체를 다시 쓰는 것은 분할이 아니므로 빈 지정은 거부한다."""
+    if not pages.strip():
+        raise PdfPagesError("분리할 페이지를 입력하세요.")
+    return _assemble([(source, pages)], Path(destination), overwrite)
+
+
+def _assemble(sources: Sequence[tuple[Path | str, str]], destination: Path, overwrite: bool) -> Path:
+    # 쓰기 전에 모든 입력을 먼저 검사한다. 3번째 파일의 오류 때문에 반쯤 쓰인 결과가 남으면 안 된다.
+    planned: list[tuple[PdfReader, list[int]]] = []
+    for path, pages in sources:
+        reader = _open_reader(Path(path))
+        planned.append((reader, parse_page_range(pages, len(reader.pages))))
+    writer = PdfWriter()
+    for reader, numbers in planned:
+        for number in numbers:
+            writer.add_page(reader.pages[number - 1])
+    if len(writer.pages) == 0:
+        raise PdfPagesError("합칠 페이지가 없습니다.")
+    return _write_pdf(writer, destination, overwrite)
+
+
+def _write_pdf(writer: PdfWriter, destination: Path, overwrite: bool) -> Path:
+    """임시 파일에 쓴 뒤 최종 이름으로 옮긴다. 중간에 실패해도 반쯤 쓰인 파일이 남지 않는다."""
+    if destination.exists() and not overwrite:
+        raise PdfPagesError(f"같은 이름의 PDF가 이미 있습니다: {destination}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_name(f".{destination.stem}.writing.pdf")
+    try:
+        with open(temporary, "wb") as handle:
+            writer.write(handle)
+        os.replace(temporary, destination)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+    return destination

@@ -148,5 +148,96 @@ class RenderPageTests(unittest.TestCase):
             pdf_pages.render_page(make_pdf(self.folder, "a.pdf", 2), 3)
 
 
+class MergePdfsTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.folder = Path(self.tmp.name)
+        self.a = make_pdf(self.folder, "a.pdf", 3, "A")
+        self.b = make_pdf(self.folder, "b.pdf", 2, "B")
+        self.out = self.folder / "out" / "merged.pdf"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_merges_whole_files_in_order(self):
+        result = pdf_pages.merge_pdfs([(self.a, ""), (self.b, "")], self.out)
+        self.assertEqual(result, self.out)
+        self.assertEqual(page_texts(self.out), ["A 1", "A 2", "A 3", "B 1", "B 2"])
+
+    def test_merges_selected_pages_only(self):
+        pdf_pages.merge_pdfs([(self.a, "1-2"), (self.b, "2")], self.out)
+        self.assertEqual(page_texts(self.out), ["A 1", "A 2", "B 2"])
+
+    def test_source_order_is_respected(self):
+        pdf_pages.merge_pdfs([(self.b, ""), (self.a, "3,1")], self.out)
+        self.assertEqual(page_texts(self.out), ["B 1", "B 2", "A 3", "A 1"])
+
+    def test_originals_are_untouched(self):
+        before = [(p.stat().st_size, p.stat().st_mtime_ns) for p in (self.a, self.b)]
+        pdf_pages.merge_pdfs([(self.a, ""), (self.b, "")], self.out)
+        after = [(p.stat().st_size, p.stat().st_mtime_ns) for p in (self.a, self.b)]
+        self.assertEqual(before, after)
+
+    def test_fewer_than_two_sources_is_rejected(self):
+        with self.assertRaises(PdfPagesError) as caught:
+            pdf_pages.merge_pdfs([(self.a, "")], self.out)
+        self.assertEqual(str(caught.exception), "PDF를 2개 이상 지정하세요.")
+
+    def test_bad_page_on_a_later_file_leaves_no_output(self):
+        with self.assertRaises(PdfPagesError):
+            pdf_pages.merge_pdfs([(self.a, ""), (self.b, "9")], self.out)
+        self.assertFalse(self.out.exists())
+        self.assertEqual(list(self.folder.glob("out/*")), [])
+
+    def test_existing_destination_needs_overwrite(self):
+        pdf_pages.merge_pdfs([(self.a, ""), (self.b, "")], self.out)
+        with self.assertRaises(PdfPagesError) as caught:
+            pdf_pages.merge_pdfs([(self.a, "1"), (self.b, "1")], self.out)
+        self.assertEqual(str(caught.exception), f"같은 이름의 PDF가 이미 있습니다: {self.out}")
+        pdf_pages.merge_pdfs([(self.a, "1"), (self.b, "1")], self.out, overwrite=True)
+        self.assertEqual(page_texts(self.out), ["A 1", "B 1"])
+
+    def test_no_temporary_file_is_left_behind(self):
+        pdf_pages.merge_pdfs([(self.a, ""), (self.b, "")], self.out)
+        self.assertEqual([p.name for p in self.out.parent.iterdir()], ["merged.pdf"])
+
+
+class SplitPdfTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.folder = Path(self.tmp.name)
+        self.source = make_pdf(self.folder, "doc.pdf", 5)
+        self.out = self.folder / "doc_p2-3.pdf"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_keeps_only_selected_pages(self):
+        pdf_pages.split_pdf(self.source, "2-3", self.out)
+        self.assertEqual(page_texts(self.out), ["PAGE 2", "PAGE 3"])
+        self.assertEqual(len(PdfReader(self.source).pages), 5)
+
+    def test_empty_pages_is_rejected(self):
+        with self.assertRaises(PdfPagesError) as caught:
+            pdf_pages.split_pdf(self.source, "  ", self.out)
+        self.assertEqual(str(caught.exception), "분리할 페이지를 입력하세요.")
+        self.assertFalse(self.out.exists())
+
+    def test_existing_destination_needs_overwrite(self):
+        pdf_pages.split_pdf(self.source, "2-3", self.out)
+        with self.assertRaises(PdfPagesError):
+            pdf_pages.split_pdf(self.source, "1", self.out)
+        pdf_pages.split_pdf(self.source, "1", self.out, overwrite=True)
+        self.assertEqual(page_texts(self.out), ["PAGE 1"])
+
+
+class AutoNameTests(unittest.TestCase):
+    def test_merged_name_uses_first_file_stem(self):
+        self.assertEqual(pdf_pages.merged_name(Path("C:/x/report.pdf")), "report_합본.pdf")
+
+    def test_split_name_strips_spaces_from_pages(self):
+        self.assertEqual(pdf_pages.split_name("doc.pdf", "2-4, 7"), "doc_p2-4,7.pdf")
+
+
 if __name__ == "__main__":
     unittest.main()
