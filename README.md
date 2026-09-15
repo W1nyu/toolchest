@@ -1,6 +1,6 @@
 # Local Converter
 
-인터넷에 파일을 업로드하지 않고 PC에서 미디어와 문서를 변환하는 로컬 도구입니다. CLI와 Windows GUI를 제공합니다. 웹페이지는 주소만 입력하면 광고·메뉴·댓글을 제외한 본문과 본문 이미지를 PDF로 저장할 수 있습니다. 이미지 속 글자는 Windows 내장 OCR로 추출해 텍스트나 검색 가능한 PDF로 저장할 수 있습니다.
+인터넷에 파일을 업로드하지 않고 PC에서 미디어와 문서를 변환하는 로컬 도구입니다. CLI와 Windows GUI를 제공합니다. 웹페이지는 주소만 입력하면 광고·메뉴·댓글을 제외한 본문과 본문 이미지를 PDF로 저장할 수 있습니다. 이미지 속 글자는 Windows 내장 OCR로 추출해 텍스트나 검색 가능한 PDF로 저장할 수 있습니다. 여러 PDF를 원하는 순서·원하는 쪽만 골라 합치거나, 한 PDF에서 필요한 쪽만 뽑아 새 PDF로 만들 수도 있습니다. 쪽마다 썸네일을 보고 클릭해 고를 수 있으며 원본은 수정되지 않습니다.
 
 ## 폴더 구조
 
@@ -24,6 +24,7 @@ output/         생성된 결과물 (Git 추적 제외)
 - Office 문서 압축: `DOCX/PPTX/XLSX -> PDF` 변환과 동시에 PDF를 압축합니다. Office 원본 내부 이미지까지 재압축하는 작업은 원본 레이아웃 손상 위험 때문에 자동 처리하지 않습니다.
 - 웹 본문 PDF: 일반 기사·블로그 본문을 자동 탐지하고, DCInside 게시글은 본문 영역을 우선 인식합니다. 본문 안의 이미지도 순서대로 넣습니다.
 - 이미지 텍스트: `src/image_to_text.py`가 Windows 내장 OCR(`src/win_ocr.ps1`)로 이미지에서 한국어·영어 텍스트를 추출합니다. 표처럼 같은 줄에 배치된 항목은 탭으로 구분되어 나오므로 엑셀·노션에 붙여넣기 좋습니다. `src/image_to_pdf.py`로 원본 이미지 위에 보이지 않는 텍스트 레이어를 얹은 검색 가능한 PDF도 만들 수 있습니다.
+- PDF 합치기·분할: `src/pdf_pages.py`가 pypdf로 원본 쪽을 그대로 복사해 새 PDF를 만듭니다. 합치기는 파일 순서와 파일별 쪽(`1-3, 5`)을 지정할 수 있고, 분할은 지정한 쪽만 모아 PDF 1개를 만듭니다. GUI에서는 pypdfium2로 그린 쪽 썸네일을 클릭해 고를 수 있습니다. 원본은 읽기만 하며 결과는 항상 새 파일입니다.
 
 ## 설치
 
@@ -32,7 +33,7 @@ Python 3.10 이상과 다음 프로그램을 설치하세요.
 1. [FFmpeg](https://ffmpeg.org/download.html): 미디어 변환용
 2. [LibreOffice](https://www.libreoffice.org/download/download/): Office 문서 -> PDF용
 
-웹 본문 PDF 기능에는 아래 Python 패키지도 필요합니다.
+웹 본문 PDF와 PDF 합치기·분할 기능에는 아래 Python 패키지도 필요합니다.
 
 ```powershell
 python -m pip install -r requirements.txt
@@ -58,6 +59,8 @@ GUI에서 파일 선택 -> 변환 형식 선택 또는 직접 입력 -> 출력 �
 
 이미지 텍스트 탭에서는 `이미지 불러오기` 또는 Ctrl+V로 이미지를 넣고 `텍스트 추출`을 누릅니다. 결과는 편집창에서 직접 고칠 수 있고, `전체 복사`·`.txt 저장`·`.md 저장`·`PDF 저장`으로 내보낼 수 있습니다. PDF에는 편집창에서 고친 내용이 아니라 텍스트 추출 시점의 인식 결과가 들어갑니다.
 
+PDF 합치기 탭에서는 `PDF 추가`로 파일을 넣고 `↑ 위로`·`↓ 아래로`로 순서를 정한 뒤, 행마다 썸네일을 클릭하거나 페이지 칸에 `1-3, 5`처럼 적어 쓸 쪽을 고릅니다(비우면 전체). PDF 분할 탭에서는 파일을 고르고 분리할 쪽을 클릭하거나 입력하면 `원본_p2-4,7.pdf`처럼 이름이 자동으로 채워집니다. 두 탭 모두 기본 저장 위치는 `output/pdf`입니다.
+
 ## CLI 실행
 
 ```powershell
@@ -73,6 +76,8 @@ python src/image_to_text.py assets/samples/ex.png
 python src/image_to_text.py assets/samples/ex.png --output result.txt
 python src/image_to_text.py assets/samples/ex.png --pdf result.pdf
 python src/image_to_text.py --scale 4
+python src/pdf_pages.py merge a.pdf "b.pdf:1-3,5" c.pdf --output merged.pdf
+python src/pdf_pages.py split in.pdf --pages "2-4,7" --output-dir output/pdf
 ```
 
 PDF를 이미지로 바꾸려면 Poppler의 `pdftoppm` 또는 `pdftocairo`를 설치하고 PATH에 추가해야 합니다.
