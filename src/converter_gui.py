@@ -77,6 +77,7 @@ class ConverterApp(tk.Tk):
         self.split_status = tk.StringVar(
             value="PDF를 고른 뒤 분리할 쪽을 클릭하거나 입력하세요. 원본은 그대로 두고 새 PDF를 만듭니다.")
         self._split_name_is_custom = False
+        self._split_auto_name = ""
         self.merge_pages = tk.StringVar()
         self.merge_output_dir = tk.StringVar(value=str(DEFAULT_PDF_DIR))
         self.merge_name = tk.StringVar()
@@ -86,6 +87,7 @@ class ConverterApp(tk.Tk):
         self.merge_items: list[MergeItem] = []
         self.merge_current: int | None = None
         self._merge_name_is_custom = False
+        self._merge_auto_name = ""
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -239,7 +241,6 @@ class ConverterApp(tk.Tk):
         ttk.Label(frame, text="결과 이름").grid(row=5, column=0, sticky="w", pady=7)
         name_entry = ttk.Entry(frame, textvariable=self.merge_name)
         name_entry.grid(row=5, column=1, sticky="ew", padx=8)
-        name_entry.bind("<Key>", self.mark_merge_name_custom)
         ttk.Checkbutton(frame, text="같은 이름이면 덮어쓰기", variable=self.merge_overwrite).grid(row=5, column=2, sticky="w")
         self.merge_button = ttk.Button(frame, text="PDF 합치기", command=self.start_merge)
         self.merge_button.grid(row=6, column=1, sticky="e", padx=8, pady=12)
@@ -247,6 +248,7 @@ class ConverterApp(tk.Tk):
         ttk.Label(frame, textvariable=self.merge_status, wraplength=800).grid(
             row=8, column=0, columnspan=3, sticky="w", pady=(10, 0))
         self.merge_pages.trace_add("write", self._on_merge_pages_changed)
+        self.merge_name.trace_add("write", self._on_merge_name_changed)
 
     def _build_split_ui(self, parent: ttk.Frame) -> None:
         frame = ttk.Frame(parent, padding=18)
@@ -267,7 +269,6 @@ class ConverterApp(tk.Tk):
         ttk.Label(frame, text="결과 이름").grid(row=4, column=0, sticky="w", pady=7)
         name_entry = ttk.Entry(frame, textvariable=self.split_name)
         name_entry.grid(row=4, column=1, sticky="ew", padx=8)
-        name_entry.bind("<Key>", self.mark_split_name_custom)
         ttk.Checkbutton(frame, text="같은 이름이면 덮어쓰기", variable=self.split_overwrite).grid(row=4, column=2, sticky="w")
         self.split_button = ttk.Button(frame, text="PDF 분할", command=self.start_split)
         self.split_button.grid(row=5, column=1, sticky="e", padx=8, pady=12)
@@ -275,6 +276,7 @@ class ConverterApp(tk.Tk):
         ttk.Label(frame, textvariable=self.split_status, wraplength=800).grid(
             row=7, column=0, columnspan=3, sticky="w", pady=(10, 0))
         self.split_pages.trace_add("write", self._refresh_split_name)
+        self.split_name.trace_add("write", self._on_split_name_changed)
 
     def choose_input(self) -> None:
         path = filedialog.askopenfilename(title="변환할 파일 선택", filetypes=[("모든 파일", "*.*")])
@@ -671,13 +673,15 @@ class ConverterApp(tk.Tk):
         if path:
             self.merge_output_dir.set(path)
 
-    def mark_merge_name_custom(self, event: tk.Event | None = None) -> None:
-        self._merge_name_is_custom = True
+    def _on_merge_name_changed(self, *_args) -> None:
+        """자동 이름과 다른 값이 들어오면 사용자가 고친 것이다. 다시 같아지면 자동 갱신을 재개한다."""
+        self._merge_name_is_custom = self.merge_name.get() != self._merge_auto_name
 
     def _refresh_merge_name(self) -> None:
         if self._merge_name_is_custom or not self.merge_items:
             return
-        self.merge_name.set(merged_name(self.merge_items[0].path))
+        self._merge_auto_name = merged_name(self.merge_items[0].path)
+        self.merge_name.set(self._merge_auto_name)
 
     def start_merge(self) -> None:
         if len(self.merge_items) < 2:
@@ -735,14 +739,15 @@ class ConverterApp(tk.Tk):
         if path:
             self.split_output_dir.set(path)
 
-    def mark_split_name_custom(self, event: tk.Event | None = None) -> None:
-        """사용자가 결과 이름을 직접 고치기 시작하면 더는 자동으로 바꾸지 않는다."""
-        self._split_name_is_custom = True
+    def _on_split_name_changed(self, *_args) -> None:
+        """자동 이름과 다른 값이 들어오면 사용자가 고친 것이다. 다시 같아지면 자동 갱신을 재개한다."""
+        self._split_name_is_custom = self.split_name.get() != self._split_auto_name
 
     def _refresh_split_name(self, *_args) -> None:
         if self._split_name_is_custom or not self.split_input.get():
             return
-        self.split_name.set(split_name(self.split_input.get(), self.split_pages.get()))
+        self._split_auto_name = split_name(self.split_input.get(), self.split_pages.get())
+        self.split_name.set(self._split_auto_name)
 
     def start_split(self) -> None:
         if not self.split_input.get():

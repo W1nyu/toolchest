@@ -1,5 +1,6 @@
-"""Headless tests for converter_gui.ConverterApp's image tab guards."""
+"""Headless tests for converter_gui.ConverterApp: tab layout, image-tab guards, PDF merge and split tabs."""
 
+import logging
 import unittest
 import sys
 import tempfile
@@ -9,6 +10,7 @@ from PIL import Image
 from reportlab.pdfgen import canvas
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+logging.getLogger("pypdf").setLevel(logging.ERROR)  # 일부러 망가뜨린 파일에 대한 경고는 테스트 잡음일 뿐이다
 
 import converter_gui
 
@@ -185,18 +187,23 @@ class SplitTabTests(unittest.TestCase):
 
     def test_custom_result_name_is_kept(self):
         self.app.set_split_input(self.pdf)
-        self.app.mark_split_name_custom()
         self.app.split_name.set("mine.pdf")
         self.app.split_pages.set("2")
         self.assertEqual(self.app.split_name.get(), "mine.pdf")
 
     def test_new_file_resets_custom_name(self):
         self.app.set_split_input(self.pdf)
-        self.app.mark_split_name_custom()
         self.app.split_name.set("mine.pdf")
         other = make_pdf(self.folder, "other.pdf", 2)
         self.app.set_split_input(other)
         self.assertEqual(self.app.split_name.get(), "other_p.pdf")
+
+    def test_navigation_or_retyping_the_auto_name_keeps_auto_refresh(self):
+        self.app.set_split_input(self.pdf)
+        self.app.split_pages.set("2")
+        self.app.split_name.set(self.app.split_name.get())  # 값이 바뀌지 않는 편집(End, 화살표 등)과 같다
+        self.app.split_pages.set("3")
+        self.assertEqual(self.app.split_name.get(), "doc_p3.pdf")
 
     def test_unreadable_file_is_reported_and_not_set(self):
         bad = self.folder / "bad.pdf"
@@ -271,7 +278,6 @@ class MergeTabTests(unittest.TestCase):
 
     def test_custom_name_survives_reordering(self):
         self.app.add_merge_files([self.a, self.b])
-        self.app.mark_merge_name_custom()
         self.app.merge_name.set("mine.pdf")
         self.app.select_merge_row(1)
         self.app.move_merge_item(-1)
