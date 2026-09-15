@@ -6,6 +6,7 @@ import argparse
 import os
 import re
 import sys
+import threading
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 
@@ -17,6 +18,8 @@ THUMBNAIL_WIDTH = 110  # px
 
 _SEPARATORS = re.compile(r"[,，、]")
 _RANGE = re.compile(r"^(\d+)(?:\s*-\s*(\d+))?$")
+# PDFium은 스레드 안전하지 않다. 썸네일 스레드가 둘 이상 동시에 돌면 접근 위반으로 죽으므로 호출을 줄 세운다.
+_RENDER_LOCK = threading.Lock()
 
 
 class PdfPagesError(Exception):
@@ -89,21 +92,22 @@ def render_page(path: Path | str, page_number: int, width: int = THUMBNAIL_WIDTH
     """
     import pypdfium2 as pdfium
 
-    try:
-        document = pdfium.PdfDocument(str(path))
-    except (pdfium.PdfiumError, OSError) as exc:  # pypdfium2는 열기 실패를 PdfiumError로 올린다
-        raise PdfPagesError(f"PDF 파일을 읽을 수 없습니다: {Path(path).name}") from exc
-    try:
-        if not 1 <= page_number <= len(document):
-            raise PdfPagesError(f"{page_number}쪽은 없습니다: {Path(path).name}")
-        page = document[page_number - 1]
+    with _RENDER_LOCK:
         try:
-            page_width, _ = page.get_size()
-            return page.render(scale=width / page_width).to_pil().convert("RGB")
+            document = pdfium.PdfDocument(str(path))
+        except (pdfium.PdfiumError, OSError) as exc:  # pypdfium2는 열기 실패를 PdfiumError로 올린다
+            raise PdfPagesError(f"PDF 파일을 읽을 수 없습니다: {Path(path).name}") from exc
+        try:
+            if not 1 <= page_number <= len(document):
+                raise PdfPagesError(f"{page_number}쪽은 없습니다: {Path(path).name}")
+            page = document[page_number - 1]
+            try:
+                page_width, _ = page.get_size()
+                return page.render(scale=width / page_width).to_pil().convert("RGB")
+            finally:
+                page.close()
         finally:
-            page.close()
-    finally:
-        document.close()
+            document.close()
 
 
 def merged_name(first_source: Path | str) -> str:
