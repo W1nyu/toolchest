@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import argparse
 import os
 import re
+import sys
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 
@@ -163,3 +165,54 @@ def _write_pdf(writer: PdfWriter, destination: Path, overwrite: bool) -> Path:
         if temporary.exists():
             temporary.unlink()
     return destination
+
+
+def _split_source_argument(argument: str) -> tuple[str, str]:
+    """"b.pdf:1-3"을 ("b.pdf", "1-3")으로 나눈다. ".pdf"로 끝나면 페이지 지정이 없는 것이다.
+
+    Windows 드라이브 문자의 콜론(C:\\...)과 구분하기 위해 마지막 콜론만 본다.
+    """
+    if argument.lower().endswith(".pdf") or ":" not in argument:
+        return argument, ""
+    path, _, pages = argument.rpartition(":")
+    return path, pages
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="PDF를 합치거나 원하는 쪽만 분리해 새 PDF를 만듭니다. 원본은 바꾸지 않습니다.")
+    commands = parser.add_subparsers(dest="command", required=True)
+
+    merge = commands.add_parser("merge", help="여러 PDF를 순서대로 합칩니다")
+    merge.add_argument("sources", nargs="+", help='경로 또는 "경로:1-3,5" (페이지를 생략하면 전체)')
+    merge.add_argument("--output", type=Path, help="결과 PDF 경로 (기본: 저장 폴더/첫파일_합본.pdf)")
+    merge.add_argument("--output-dir", type=Path, default=Path("output/pdf"))
+    merge.add_argument("--overwrite", action="store_true")
+
+    split = commands.add_parser("split", help="한 PDF에서 원하는 쪽만 분리합니다")
+    split.add_argument("source", type=Path)
+    split.add_argument("--pages", required=True, help='분리할 쪽, 예: "2-4,7"')
+    split.add_argument("--output", type=Path, help="결과 PDF 경로 (기본: 저장 폴더/원본_p페이지.pdf)")
+    split.add_argument("--output-dir", type=Path, default=Path("output/pdf"))
+    split.add_argument("--overwrite", action="store_true")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    try:
+        if args.command == "merge":
+            sources = [_split_source_argument(item) for item in args.sources]
+            destination = args.output or args.output_dir / merged_name(sources[0][0])
+            result = merge_pdfs(sources, destination, overwrite=args.overwrite)
+        else:
+            destination = args.output or args.output_dir / split_name(args.source, args.pages)
+            result = split_pdf(args.source, args.pages, destination, overwrite=args.overwrite)
+    except (PdfPagesError, OSError) as exc:
+        print(f"오류: {exc}", file=sys.stderr)
+        return 1
+    print(f"PDF 생성 완료: {result}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,8 +1,10 @@
 """pdf_pages: 페이지 범위 파싱·표기, 합치기·분할, 썸네일 렌더링 테스트."""
 
+import io
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 from pypdf import PdfReader, PdfWriter
@@ -237,6 +239,57 @@ class AutoNameTests(unittest.TestCase):
 
     def test_split_name_strips_spaces_from_pages(self):
         self.assertEqual(pdf_pages.split_name("doc.pdf", "2-4, 7"), "doc_p2-4,7.pdf")
+
+
+class SourceArgumentTests(unittest.TestCase):
+    def test_plain_path_has_no_pages(self):
+        self.assertEqual(pdf_pages._split_source_argument("a.pdf"), ("a.pdf", ""))
+
+    def test_pages_after_last_colon(self):
+        self.assertEqual(pdf_pages._split_source_argument("b.pdf:1-3,5"), ("b.pdf", "1-3,5"))
+
+    def test_windows_drive_colon_is_not_a_page_separator(self):
+        self.assertEqual(pdf_pages._split_source_argument(r"C:\docs\a.pdf"), (r"C:\docs\a.pdf", ""))
+        self.assertEqual(pdf_pages._split_source_argument(r"C:\docs\a.pdf:2"), (r"C:\docs\a.pdf", "2"))
+
+
+class CliTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.folder = Path(self.tmp.name)
+        self.a = make_pdf(self.folder, "a.pdf", 3, "A")
+        self.b = make_pdf(self.folder, "b.pdf", 2, "B")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def run_cli(self, *argv):
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = pdf_pages.main(list(argv))
+        return code, out.getvalue(), err.getvalue()
+
+    def test_merge_with_explicit_output(self):
+        out = self.folder / "m.pdf"
+        code, stdout, _ = self.run_cli("merge", str(self.a), f"{self.b}:2", "--output", str(out))
+        self.assertEqual(code, 0)
+        self.assertIn(str(out), stdout)
+        self.assertEqual(page_texts(out), ["A 1", "A 2", "A 3", "B 2"])
+
+    def test_merge_default_name_in_output_dir(self):
+        code, _, _ = self.run_cli("merge", str(self.a), str(self.b), "--output-dir", str(self.folder / "res"))
+        self.assertEqual(code, 0)
+        self.assertTrue((self.folder / "res" / "a_합본.pdf").exists())
+
+    def test_split_default_name(self):
+        code, _, _ = self.run_cli("split", str(self.a), "--pages", "1, 3", "--output-dir", str(self.folder))
+        self.assertEqual(code, 0)
+        self.assertEqual(page_texts(self.folder / "a_p1,3.pdf"), ["A 1", "A 3"])
+
+    def test_error_goes_to_stderr_with_exit_1(self):
+        code, _, stderr = self.run_cli("split", str(self.a), "--pages", "9", "--output-dir", str(self.folder))
+        self.assertEqual(code, 1)
+        self.assertIn("1부터 3 사이의 페이지만 지정할 수 있습니다: 9", stderr)
 
 
 if __name__ == "__main__":
