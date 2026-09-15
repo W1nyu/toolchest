@@ -50,9 +50,11 @@ class PagePicker(ttk.Frame):
         self._generation = 0
         self._writing = False  # 위젯이 스스로 pages_var를 쓸 때 추적 콜백을 건너뛴다
         self._columns = 1
+        self._poll_id: str | None = None
         self._placeholder = ImageTk.PhotoImage(
             Image.new("RGB", (THUMBNAIL_WIDTH, PLACEHOLDER_HEIGHT), PLACEHOLDER_COLOR), master=self)
         self._build()
+        self.bind("<Destroy>", self._on_destroy)
         pages_var.trace_add("write", self._on_pages_var_changed)
 
     # ----- 구성 -----
@@ -115,6 +117,9 @@ class PagePicker(ttk.Frame):
         (이전 파일의 페이지 지정이 새 파일에 맞지 않아 엉뚱한 오류가 뜨는 것을 막는다.)
         """
         self._generation += 1
+        if self._poll_id is not None:
+            self.after_cancel(self._poll_id)
+            self._poll_id = None
         self._clear_cells()
         self._selected = set()
         self.page_count = 0
@@ -133,7 +138,7 @@ class PagePicker(ttk.Frame):
         self._thread = threading.Thread(
             target=self._render_all, args=(self._generation, path, self.page_count, images), daemon=True)
         self._thread.start()
-        self.after(POLL_MS, self._drain)
+        self._poll_id = self.after(POLL_MS, self._drain)
 
     def toggle(self, number: int) -> None:
         """썸네일 클릭. 선택을 뒤집고 페이지 칸을 오름차순 압축 표기로 다시 쓴다."""
@@ -199,6 +204,7 @@ class PagePicker(ttk.Frame):
 
     def _drain(self) -> None:
         """메인 스레드. 큐를 비우고, 워커가 아직 살아 있으면 다시 예약한다."""
+        self._poll_id = None
         alive = self.is_rendering()  # 비우기 전에 확인해야 마지막 항목을 놓치지 않는다
         while True:
             try:
@@ -212,7 +218,7 @@ class PagePicker(ttk.Frame):
             else:
                 self._show_thumbnail(number, payload)
         if alive:
-            self.after(POLL_MS, self._drain)
+            self._poll_id = self.after(POLL_MS, self._drain)
 
     def _show_thumbnail(self, number: int, image: Image.Image | None) -> None:
         if number > len(self._image_labels):
@@ -224,3 +230,10 @@ class PagePicker(ttk.Frame):
         photo = ImageTk.PhotoImage(image, master=self)
         self._photos[number] = photo
         label.configure(image=photo, text="")
+
+    def _on_destroy(self, event: tk.Event) -> None:
+        """창이 닫힐 때 예약된 폴링을 취소한다. 남겨두면 Tcl이 사라진 콜백을 부르며 오류를 찍는다."""
+        if event.widget is not self or self._poll_id is None:
+            return
+        self.after_cancel(self._poll_id)
+        self._poll_id = None
