@@ -2,9 +2,11 @@
 
 import unittest
 import sys
+import tempfile
 from pathlib import Path
 
 from PIL import Image
+from reportlab.pdfgen import canvas
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -125,6 +127,88 @@ class ClipboardTempFileTests(unittest.TestCase):
         path = app.temp_image_path
         app.close()
         self.assertFalse(path.exists(), "창을 닫았는데 임시 PNG 가 남아 있습니다")
+
+
+def make_pdf(folder: Path, name: str, page_count: int) -> Path:
+    path = folder / name
+    pdf = canvas.Canvas(str(path), pagesize=(300, 400))
+    for number in range(1, page_count + 1):
+        pdf.drawString(50, 350, f"PAGE {number}")
+        pdf.showPage()
+    pdf.save()
+    return path
+
+
+class TabLayoutTests(unittest.TestCase):
+    def test_five_tabs_in_order(self):
+        app = converter_gui.ConverterApp()
+        try:
+            names = [app.notebook.tab(tab, "text") for tab in app.notebook.tabs()]
+            self.assertEqual(names, ["파일 변환", "웹 본문 PDF", "이미지 텍스트", "PDF 합치기", "PDF 분할"])
+        finally:
+            app.destroy()
+
+
+class PdfDestinationTests(unittest.TestCase):
+    def test_adds_pdf_suffix_when_missing(self):
+        self.assertEqual(converter_gui.pdf_destination("C:/out", "name"), Path("C:/out/name.pdf"))
+
+    def test_keeps_existing_suffix_and_strips_spaces(self):
+        self.assertEqual(converter_gui.pdf_destination("C:/out", " name.PDF "), Path("C:/out/name.PDF"))
+
+
+class SplitTabTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.folder = Path(self.tmp.name)
+        self.pdf = make_pdf(self.folder, "doc.pdf", 4)
+        self.app = converter_gui.ConverterApp()
+
+    def tearDown(self):
+        self.app.destroy()
+        self.tmp.cleanup()
+
+    def test_choosing_a_file_loads_thumbnails_and_page_count(self):
+        self.app.set_split_input(self.pdf)
+        self.assertEqual(self.app.split_input.get(), str(self.pdf))
+        self.assertEqual(self.app.split_picker.page_count, 4)
+        self.assertEqual(self.app.split_info.get(), "전체 4쪽")
+        self.assertEqual(self.app.split_pages.get(), "")
+
+    def test_result_name_follows_the_page_field(self):
+        self.app.set_split_input(self.pdf)
+        self.app.split_pages.set("2-4, 7")
+        self.assertEqual(self.app.split_name.get(), "doc_p2-4,7.pdf")
+        self.app.split_picker.toggle(1)
+        self.assertEqual(self.app.split_pages.get(), "1")
+        self.assertEqual(self.app.split_name.get(), "doc_p1.pdf")
+
+    def test_custom_result_name_is_kept(self):
+        self.app.set_split_input(self.pdf)
+        self.app.mark_split_name_custom()
+        self.app.split_name.set("mine.pdf")
+        self.app.split_pages.set("2")
+        self.assertEqual(self.app.split_name.get(), "mine.pdf")
+
+    def test_new_file_resets_custom_name(self):
+        self.app.set_split_input(self.pdf)
+        self.app.mark_split_name_custom()
+        self.app.split_name.set("mine.pdf")
+        other = make_pdf(self.folder, "other.pdf", 2)
+        self.app.set_split_input(other)
+        self.assertEqual(self.app.split_name.get(), "other_p.pdf")
+
+    def test_unreadable_file_is_reported_and_not_set(self):
+        bad = self.folder / "bad.pdf"
+        bad.write_text("nope", encoding="utf-8")
+        original = converter_gui.messagebox.showerror
+        converter_gui.messagebox.showerror = lambda *args, **kwargs: None  # 모달 창이 테스트를 막지 않게
+        try:
+            self.app.set_split_input(bad)
+        finally:
+            converter_gui.messagebox.showerror = original
+        self.assertEqual(self.app.split_input.get(), "")
+        self.assertEqual(self.app.split_status.get(), "PDF 파일을 읽을 수 없습니다: bad.pdf")
 
 
 if __name__ == "__main__":

@@ -15,14 +15,27 @@ from image_to_pdf import build_searchable_pdf
 from image_to_text import OcrError, image_from_clipboard, image_to_text, load_image
 from local_converter import ConversionError, convert
 from web_to_pdf import WebPdfError, webpage_to_pdf
+from page_picker import PagePicker
+from pdf_pages import PdfPagesError, merge_pdfs, merged_name, pdf_page_count, split_name, split_pdf
+
+
+DEFAULT_PDF_DIR = Path.cwd() / "output" / "pdf"
+
+
+def pdf_destination(folder: str, name: str) -> Path:
+    """저장 폴더와 결과 이름 칸을 합쳐 경로를 만든다. 확장자를 빼먹어도 .pdf를 붙인다."""
+    name = name.strip()
+    if not name.lower().endswith(".pdf"):
+        name += ".pdf"
+    return Path(folder) / name
 
 
 class ConverterApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("로컬 변환기")
-        self.geometry("820x640")
-        self.minsize(720, 560)
+        self.geometry("900x720")
+        self.minsize(800, 640)
         self.input_path = tk.StringVar()
         self.output_dir = tk.StringVar()
         self.target_format = tk.StringVar(value="mp3")
@@ -43,6 +56,15 @@ class ConverterApp(tk.Tk):
         self.temp_image_path: Path | None = None
         self.image_source_path: Path | None = None
         self.white_canvas = tk.BooleanVar(value=True)
+        self.split_input = tk.StringVar()
+        self.split_pages = tk.StringVar()
+        self.split_output_dir = tk.StringVar(value=str(DEFAULT_PDF_DIR))
+        self.split_name = tk.StringVar()
+        self.split_overwrite = tk.BooleanVar()
+        self.split_info = tk.StringVar()
+        self.split_status = tk.StringVar(
+            value="PDF를 고른 뒤 분리할 쪽을 클릭하거나 입력하세요. 원본은 그대로 두고 새 PDF를 만듭니다.")
+        self._split_name_is_custom = False
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -51,12 +73,18 @@ class ConverterApp(tk.Tk):
         file_tab = ttk.Frame(self.notebook)
         web_tab = ttk.Frame(self.notebook)
         image_tab = ttk.Frame(self.notebook)
+        merge_tab = ttk.Frame(self.notebook)
+        split_tab = ttk.Frame(self.notebook)
         self.notebook.add(file_tab, text="파일 변환")
         self.notebook.add(web_tab, text="웹 본문 PDF")
         self.notebook.add(image_tab, text="이미지 텍스트")
+        self.notebook.add(merge_tab, text="PDF 합치기")
+        self.notebook.add(split_tab, text="PDF 분할")
         self._build_file_ui(file_tab)
         self._build_web_ui(web_tab)
         self._build_image_ui(image_tab)
+        self._build_merge_ui(merge_tab)
+        self._build_split_ui(split_tab)
         self.protocol("WM_DELETE_WINDOW", self.close)
         self.bind_all("<Control-v>", self._on_paste_shortcut)
         self.bind_all("<Control-V>", self._on_paste_shortcut)
@@ -151,6 +179,37 @@ class ConverterApp(tk.Tk):
 
         ttk.Label(frame, textvariable=self.image_status, wraplength=740).grid(
             row=6, column=0, columnspan=3, sticky="w", pady=12)
+
+    def _build_merge_ui(self, parent: ttk.Frame) -> None:
+        pass  # Task 7에서 채운다
+
+    def _build_split_ui(self, parent: ttk.Frame) -> None:
+        frame = ttk.Frame(parent, padding=18)
+        frame.pack(fill="both", expand=True)
+        frame.columnconfigure(1, weight=1)
+        frame.rowconfigure(2, weight=1)
+        ttk.Label(frame, text="입력 PDF").grid(row=0, column=0, sticky="w", pady=7)
+        ttk.Entry(frame, textvariable=self.split_input, state="readonly").grid(row=0, column=1, sticky="ew", padx=8)
+        ttk.Button(frame, text="파일 선택", command=self.choose_split_input).grid(row=0, column=2)
+        ttk.Label(frame, text="분리할 페이지").grid(row=1, column=0, sticky="w", pady=7)
+        ttk.Entry(frame, textvariable=self.split_pages).grid(row=1, column=1, sticky="ew", padx=8)
+        ttk.Label(frame, textvariable=self.split_info).grid(row=1, column=2, sticky="w")
+        self.split_picker = PagePicker(frame, self.split_pages, self.split_status)
+        self.split_picker.grid(row=2, column=0, columnspan=3, sticky="nsew", pady=8)
+        ttk.Label(frame, text="저장 폴더").grid(row=3, column=0, sticky="w", pady=7)
+        ttk.Entry(frame, textvariable=self.split_output_dir).grid(row=3, column=1, sticky="ew", padx=8)
+        ttk.Button(frame, text="폴더 선택", command=self.choose_split_output).grid(row=3, column=2)
+        ttk.Label(frame, text="결과 이름").grid(row=4, column=0, sticky="w", pady=7)
+        name_entry = ttk.Entry(frame, textvariable=self.split_name)
+        name_entry.grid(row=4, column=1, sticky="ew", padx=8)
+        name_entry.bind("<Key>", self.mark_split_name_custom)
+        ttk.Checkbutton(frame, text="같은 이름이면 덮어쓰기", variable=self.split_overwrite).grid(row=4, column=2, sticky="w")
+        self.split_button = ttk.Button(frame, text="PDF 분할", command=self.start_split)
+        self.split_button.grid(row=5, column=1, sticky="e", padx=8, pady=12)
+        ttk.Separator(frame).grid(row=6, column=0, columnspan=3, sticky="ew")
+        ttk.Label(frame, textvariable=self.split_status, wraplength=800).grid(
+            row=7, column=0, columnspan=3, sticky="w", pady=(10, 0))
+        self.split_pages.trace_add("write", self._refresh_split_name)
 
     def choose_input(self) -> None:
         path = filedialog.askopenfilename(title="변환할 파일 선택", filetypes=[("모든 파일", "*.*")])
@@ -460,6 +519,71 @@ class ConverterApp(tk.Tk):
         self._enable_image_buttons()
         self.image_status.set(f"PDF 저장 실패: {error}")
         messagebox.showerror("PDF 저장 실패", error)
+
+    # ----- PDF 분할 -----
+
+    def choose_split_input(self) -> None:
+        path = filedialog.askopenfilename(title="분할할 PDF 선택", filetypes=[("PDF 파일", "*.pdf")])
+        if path:
+            self.set_split_input(Path(path))
+
+    def set_split_input(self, path: Path) -> None:
+        try:
+            self.split_picker.load(path)
+        except PdfPagesError as exc:
+            self.split_status.set(str(exc))
+            messagebox.showerror("PDF 열기 실패", str(exc))
+            return
+        self.split_input.set(str(path))
+        self._split_name_is_custom = False
+        self.split_info.set(f"전체 {self.split_picker.page_count}쪽")
+        self.split_pages.set("")  # 추적 콜백이 결과 이름도 다시 쓴다
+        self._refresh_split_name()
+
+    def choose_split_output(self) -> None:
+        path = filedialog.askdirectory(title="PDF 저장 폴더 선택")
+        if path:
+            self.split_output_dir.set(path)
+
+    def mark_split_name_custom(self, event: tk.Event | None = None) -> None:
+        """사용자가 결과 이름을 직접 고치기 시작하면 더는 자동으로 바꾸지 않는다."""
+        self._split_name_is_custom = True
+
+    def _refresh_split_name(self, *_args) -> None:
+        if self._split_name_is_custom or not self.split_input.get():
+            return
+        self.split_name.set(split_name(self.split_input.get(), self.split_pages.get()))
+
+    def start_split(self) -> None:
+        if not self.split_input.get():
+            messagebox.showwarning("입력 필요", "분할할 PDF를 선택하세요.")
+            return
+        if not self.split_name.get().strip():
+            messagebox.showwarning("이름 필요", "결과 이름을 입력하세요.")
+            return
+        destination = pdf_destination(self.split_output_dir.get(), self.split_name.get())
+        self.split_button.configure(state="disabled")
+        self.split_status.set("새 PDF를 만드는 중입니다...")
+        threading.Thread(target=self._split, args=(destination,), daemon=True).start()
+
+    def _split(self, destination: Path) -> None:
+        try:
+            result = split_pdf(self.split_input.get(), self.split_pages.get(), destination,
+                               overwrite=self.split_overwrite.get())
+        except (PdfPagesError, OSError) as exc:
+            self.after(0, self._finish_split_error, str(exc))
+        else:
+            self.after(0, self._finish_split_success, result)
+
+    def _finish_split_success(self, result: Path) -> None:
+        self.split_button.configure(state="normal")
+        self.split_status.set(f"PDF 생성 완료: {result} · 원본은 그대로 있습니다.")
+        messagebox.showinfo("PDF 생성 완료", f"새 PDF가 생성되었습니다.\n{result}")
+
+    def _finish_split_error(self, error: str) -> None:
+        self.split_button.configure(state="normal")
+        self.split_status.set(f"PDF 생성 실패: {error}")
+        messagebox.showerror("PDF 생성 실패", error)
 
 
 if __name__ == "__main__":
