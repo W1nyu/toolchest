@@ -4,6 +4,11 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
+from pathlib import Path
+
+from PIL import Image
+from pypdf import PdfReader
+from pypdf.errors import PyPdfError
 
 THUMBNAIL_WIDTH = 110  # px
 
@@ -55,3 +60,44 @@ def format_page_range(pages: Iterable[int]) -> str:
         chunks.append(str(start) if start == end else f"{start}-{end}")
         index += 1
     return ", ".join(chunks)
+
+
+def _open_reader(path: Path) -> PdfReader:
+    """읽기 전용으로 연다. 열 수 없거나 암호가 걸려 있으면 한국어 메시지로 바꾼다."""
+    try:
+        reader = PdfReader(path)
+        if reader.is_encrypted:
+            raise PdfPagesError(f"암호가 걸린 PDF는 지원하지 않습니다: {path.name}")
+        len(reader.pages)  # 손상된 파일은 쪽 목록을 읽을 때 드러난다
+    except (OSError, PyPdfError) as exc:
+        raise PdfPagesError(f"PDF 파일을 읽을 수 없습니다: {path.name}") from exc
+    return reader
+
+
+def pdf_page_count(path: Path | str) -> int:
+    return len(_open_reader(Path(path)).pages)
+
+
+def render_page(path: Path | str, page_number: int, width: int = THUMBNAIL_WIDTH) -> Image.Image:
+    """한 쪽을 폭 width px에 맞춰 그린 RGB 이미지를 돌려준다. 번호는 1부터 시작한다.
+
+    pypdfium2는 여기서만 읽는다. 미설치여도 합치기·분할(pypdf)은 되어야 하므로
+    ImportError는 감싸지 않고 그대로 올린다.
+    """
+    import pypdfium2 as pdfium
+
+    try:
+        document = pdfium.PdfDocument(str(path))
+    except Exception as exc:  # pypdfium2는 열기 실패를 PdfiumError로 올린다
+        raise PdfPagesError(f"PDF 파일을 읽을 수 없습니다: {Path(path).name}") from exc
+    try:
+        if not 1 <= page_number <= len(document):
+            raise PdfPagesError(f"{page_number}쪽은 없습니다: {Path(path).name}")
+        page = document[page_number - 1]
+        try:
+            page_width, _ = page.get_size()
+            return page.render(scale=width / page_width).to_pil().convert("RGB")
+        finally:
+            page.close()
+    finally:
+        document.close()
