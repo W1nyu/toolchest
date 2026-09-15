@@ -211,5 +211,79 @@ class SplitTabTests(unittest.TestCase):
         self.assertEqual(self.app.split_status.get(), "PDF 파일을 읽을 수 없습니다: bad.pdf")
 
 
+class MergeTabTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.folder = Path(self.tmp.name)
+        self.a = make_pdf(self.folder, "a.pdf", 3)
+        self.b = make_pdf(self.folder, "b.pdf", 2)
+        self.app = converter_gui.ConverterApp()
+
+    def tearDown(self):
+        self.app.destroy()
+        self.tmp.cleanup()
+
+    def rows(self):
+        return [self.app.merge_tree.item(iid, "values") for iid in self.app.merge_tree.get_children()]
+
+    def test_adding_files_fills_the_list_and_selects_the_last(self):
+        self.app.add_merge_files([self.a, self.b])
+        self.assertEqual(self.rows(), [("1", "a.pdf", "3", "전체"), ("2", "b.pdf", "2", "전체")])
+        self.assertEqual(self.app.merge_current, 1)
+        self.assertEqual(self.app.merge_picker.page_count, 2)
+        self.assertEqual(self.app.merge_name.get(), "a_합본.pdf")
+
+    def test_page_field_updates_the_selected_row(self):
+        self.app.add_merge_files([self.a, self.b])
+        self.app.select_merge_row(0)
+        self.app.merge_pages.set("1-2")
+        self.assertEqual(self.rows()[0], ("1", "a.pdf", "3", "1-2"))
+        self.assertEqual(self.app.merge_items[0].pages, "1-2")
+        self.assertEqual(self.app.merge_items[1].pages, "")
+
+    def test_switching_rows_restores_each_rows_pages(self):
+        self.app.add_merge_files([self.a, self.b])
+        self.app.select_merge_row(0)
+        self.app.merge_pages.set("3")
+        self.app.select_merge_row(1)
+        self.assertEqual(self.app.merge_pages.get(), "")
+        self.assertEqual(self.app.merge_picker.page_count, 2)
+        self.app.select_merge_row(0)
+        self.assertEqual(self.app.merge_pages.get(), "3")
+        self.assertEqual(self.app.merge_picker.selected_pages(), {3})
+
+    def test_moving_rows_changes_order_and_default_name(self):
+        self.app.add_merge_files([self.a, self.b])
+        self.app.select_merge_row(1)
+        self.app.move_merge_item(-1)
+        self.assertEqual([row[1] for row in self.rows()], ["b.pdf", "a.pdf"])
+        self.assertEqual(self.app.merge_current, 0)
+        self.assertEqual(self.app.merge_name.get(), "b_합본.pdf")
+        self.app.move_merge_item(-1)  # 맨 위에서는 그대로
+        self.assertEqual([row[1] for row in self.rows()], ["b.pdf", "a.pdf"])
+
+    def test_removing_the_last_row_clears_the_picker(self):
+        self.app.add_merge_files([self.a])
+        self.app.remove_merge_item()
+        self.assertEqual(self.rows(), [])
+        self.assertIsNone(self.app.merge_current)
+        self.assertEqual(self.app.merge_picker.page_count, 0)
+
+    def test_custom_name_survives_reordering(self):
+        self.app.add_merge_files([self.a, self.b])
+        self.app.mark_merge_name_custom()
+        self.app.merge_name.set("mine.pdf")
+        self.app.select_merge_row(1)
+        self.app.move_merge_item(-1)
+        self.assertEqual(self.app.merge_name.get(), "mine.pdf")
+
+    def test_unreadable_file_is_skipped_and_reported(self):
+        bad = self.folder / "bad.pdf"
+        bad.write_text("nope", encoding="utf-8")
+        self.app.add_merge_files([bad, self.a])
+        self.assertEqual([row[1] for row in self.rows()], ["a.pdf"])
+        self.assertIn("PDF 파일을 읽을 수 없습니다: bad.pdf", self.app.merge_status.get())
+
+
 if __name__ == "__main__":
     unittest.main()

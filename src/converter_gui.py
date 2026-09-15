@@ -6,6 +6,8 @@ import shutil
 import tempfile
 import threading
 import tkinter as tk
+from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 
@@ -20,6 +22,16 @@ from pdf_pages import PdfPagesError, merge_pdfs, merged_name, pdf_page_count, sp
 
 
 DEFAULT_PDF_DIR = Path.cwd() / "output" / "pdf"
+
+
+@dataclass
+class MergeItem:
+    path: Path
+    page_count: int
+    pages: str = ""  # 빈 문자열은 전체
+
+    def row(self, order: int) -> tuple[str, str, str, str]:
+        return (str(order), self.path.name, str(self.page_count), self.pages or "전체")
 
 
 def pdf_destination(folder: str, name: str) -> Path:
@@ -65,6 +77,15 @@ class ConverterApp(tk.Tk):
         self.split_status = tk.StringVar(
             value="PDF를 고른 뒤 분리할 쪽을 클릭하거나 입력하세요. 원본은 그대로 두고 새 PDF를 만듭니다.")
         self._split_name_is_custom = False
+        self.merge_pages = tk.StringVar()
+        self.merge_output_dir = tk.StringVar(value=str(DEFAULT_PDF_DIR))
+        self.merge_name = tk.StringVar()
+        self.merge_overwrite = tk.BooleanVar()
+        self.merge_status = tk.StringVar(
+            value="합칠 PDF를 2개 이상 추가하고 순서를 정하세요. 행마다 쓸 쪽을 고를 수 있습니다.")
+        self.merge_items: list[MergeItem] = []
+        self.merge_current: int | None = None
+        self._merge_name_is_custom = False
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -181,7 +202,51 @@ class ConverterApp(tk.Tk):
             row=6, column=0, columnspan=3, sticky="w", pady=12)
 
     def _build_merge_ui(self, parent: ttk.Frame) -> None:
-        pass  # Task 7에서 채운다
+        frame = ttk.Frame(parent, padding=18)
+        frame.pack(fill="both", expand=True)
+        frame.columnconfigure(1, weight=1)
+        frame.rowconfigure(3, weight=1)
+
+        buttons = ttk.Frame(frame)
+        buttons.grid(row=0, column=0, columnspan=3, sticky="w")
+        ttk.Button(buttons, text="PDF 추가", command=self.choose_merge_files).pack(side="left")
+        ttk.Button(buttons, text="제거", command=self.remove_merge_item).pack(side="left", padx=(8, 0))
+        ttk.Button(buttons, text="↑ 위로", command=lambda: self.move_merge_item(-1)).pack(side="left", padx=(8, 0))
+        ttk.Button(buttons, text="↓ 아래로", command=lambda: self.move_merge_item(1)).pack(side="left", padx=(8, 0))
+
+        columns = ("order", "name", "count", "pages")
+        self.merge_tree = ttk.Treeview(frame, columns=columns, show="headings", height=5, selectmode="browse")
+        for column, heading, width, anchor in (
+            ("order", "순서", 50, "center"),
+            ("name", "파일명", 360, "w"),
+            ("count", "전체 쪽", 70, "center"),
+            ("pages", "사용할 페이지", 200, "w"),
+        ):
+            self.merge_tree.heading(column, text=heading)
+            self.merge_tree.column(column, width=width, anchor=anchor, stretch=column == "name")
+        self.merge_tree.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(8, 4))
+        self.merge_tree.bind("<<TreeviewSelect>>", self._on_merge_tree_select)
+
+        ttk.Label(frame, text="선택한 파일의 페이지").grid(row=2, column=0, sticky="w", pady=7)
+        ttk.Entry(frame, textvariable=self.merge_pages).grid(row=2, column=1, sticky="ew", padx=8)
+        ttk.Label(frame, text="비우면 전체").grid(row=2, column=2, sticky="w")
+        self.merge_picker = PagePicker(frame, self.merge_pages, self.merge_status)
+        self.merge_picker.grid(row=3, column=0, columnspan=3, sticky="nsew", pady=4)
+
+        ttk.Label(frame, text="저장 폴더").grid(row=4, column=0, sticky="w", pady=7)
+        ttk.Entry(frame, textvariable=self.merge_output_dir).grid(row=4, column=1, sticky="ew", padx=8)
+        ttk.Button(frame, text="폴더 선택", command=self.choose_merge_output).grid(row=4, column=2)
+        ttk.Label(frame, text="결과 이름").grid(row=5, column=0, sticky="w", pady=7)
+        name_entry = ttk.Entry(frame, textvariable=self.merge_name)
+        name_entry.grid(row=5, column=1, sticky="ew", padx=8)
+        name_entry.bind("<Key>", self.mark_merge_name_custom)
+        ttk.Checkbutton(frame, text="같은 이름이면 덮어쓰기", variable=self.merge_overwrite).grid(row=5, column=2, sticky="w")
+        self.merge_button = ttk.Button(frame, text="PDF 합치기", command=self.start_merge)
+        self.merge_button.grid(row=6, column=1, sticky="e", padx=8, pady=12)
+        ttk.Separator(frame).grid(row=7, column=0, columnspan=3, sticky="ew")
+        ttk.Label(frame, textvariable=self.merge_status, wraplength=800).grid(
+            row=8, column=0, columnspan=3, sticky="w", pady=(10, 0))
+        self.merge_pages.trace_add("write", self._on_merge_pages_changed)
 
     def _build_split_ui(self, parent: ttk.Frame) -> None:
         frame = ttk.Frame(parent, padding=18)
@@ -519,6 +584,131 @@ class ConverterApp(tk.Tk):
         self._enable_image_buttons()
         self.image_status.set(f"PDF 저장 실패: {error}")
         messagebox.showerror("PDF 저장 실패", error)
+
+    # ----- PDF 합치기 -----
+
+    def choose_merge_files(self) -> None:
+        paths = filedialog.askopenfilenames(title="합칠 PDF 선택", filetypes=[("PDF 파일", "*.pdf")])
+        if paths:
+            self.add_merge_files(paths)
+
+    def add_merge_files(self, paths: Iterable[Path | str]) -> None:
+        skipped: list[str] = []
+        for path in paths:
+            try:
+                count = pdf_page_count(path)
+            except PdfPagesError as exc:
+                skipped.append(str(exc))
+                continue
+            self.merge_items.append(MergeItem(Path(path), count))
+        self._refresh_merge_tree(select=len(self.merge_items) - 1 if self.merge_items else None)
+        self._refresh_merge_name()
+        if skipped:
+            self.merge_status.set("건너뛴 파일: " + " / ".join(skipped))
+
+    def _refresh_merge_tree(self, select: int | None) -> None:
+        """목록을 merge_items 순서대로 다시 그리고 select 행을 고른다."""
+        self.merge_current = None
+        self.merge_tree.delete(*self.merge_tree.get_children())
+        for index, item in enumerate(self.merge_items):
+            self.merge_tree.insert("", "end", iid=str(index), values=item.row(index + 1))
+        if select is None:
+            self.merge_picker.load(None)
+            self.merge_pages.set("")
+            return
+        self.merge_tree.selection_set(str(select))
+        self.merge_tree.focus(str(select))
+        self.select_merge_row(select)
+
+    def _on_merge_tree_select(self, event: tk.Event | None = None) -> None:
+        selection = self.merge_tree.selection()
+        if selection:
+            self.select_merge_row(int(selection[0]))
+
+    def select_merge_row(self, index: int) -> None:
+        """행을 고르면 그 파일의 썸네일을 보여주고 페이지 칸을 그 행의 값으로 바꾼다."""
+        if index == self.merge_current or not 0 <= index < len(self.merge_items):
+            return
+        self.merge_current = None  # 페이지 칸을 바꾸는 동안 이전 행에 쓰지 않도록
+        item = self.merge_items[index]
+        try:
+            self.merge_picker.load(item.path)
+        except PdfPagesError as exc:
+            self.merge_status.set(str(exc))
+        self.merge_current = index
+        self.merge_pages.set(item.pages)
+
+    def _on_merge_pages_changed(self, *_args) -> None:
+        if self.merge_current is None:
+            return
+        item = self.merge_items[self.merge_current]
+        item.pages = self.merge_pages.get().strip()
+        self.merge_tree.item(str(self.merge_current), values=item.row(self.merge_current + 1))
+
+    def move_merge_item(self, delta: int) -> None:
+        index = self.merge_current
+        if index is None:
+            return
+        target = index + delta
+        if not 0 <= target < len(self.merge_items):
+            return
+        items = self.merge_items
+        items[index], items[target] = items[target], items[index]
+        self._refresh_merge_tree(select=target)
+        self._refresh_merge_name()
+
+    def remove_merge_item(self) -> None:
+        index = self.merge_current
+        if index is None:
+            return
+        del self.merge_items[index]
+        remaining = len(self.merge_items)
+        self._refresh_merge_tree(select=min(index, remaining - 1) if remaining else None)
+        self._refresh_merge_name()
+
+    def choose_merge_output(self) -> None:
+        path = filedialog.askdirectory(title="PDF 저장 폴더 선택")
+        if path:
+            self.merge_output_dir.set(path)
+
+    def mark_merge_name_custom(self, event: tk.Event | None = None) -> None:
+        self._merge_name_is_custom = True
+
+    def _refresh_merge_name(self) -> None:
+        if self._merge_name_is_custom or not self.merge_items:
+            return
+        self.merge_name.set(merged_name(self.merge_items[0].path))
+
+    def start_merge(self) -> None:
+        if len(self.merge_items) < 2:
+            messagebox.showwarning("파일 필요", "PDF를 2개 이상 추가하세요.")
+            return
+        if not self.merge_name.get().strip():
+            messagebox.showwarning("이름 필요", "결과 이름을 입력하세요.")
+            return
+        destination = pdf_destination(self.merge_output_dir.get(), self.merge_name.get())
+        sources = [(item.path, item.pages) for item in self.merge_items]
+        self.merge_button.configure(state="disabled")
+        self.merge_status.set("새 PDF를 만드는 중입니다...")
+        threading.Thread(target=self._merge, args=(sources, destination), daemon=True).start()
+
+    def _merge(self, sources: list[tuple[Path, str]], destination: Path) -> None:
+        try:
+            result = merge_pdfs(sources, destination, overwrite=self.merge_overwrite.get())
+        except (PdfPagesError, OSError) as exc:
+            self.after(0, self._finish_merge_error, str(exc))
+        else:
+            self.after(0, self._finish_merge_success, result)
+
+    def _finish_merge_success(self, result: Path) -> None:
+        self.merge_button.configure(state="normal")
+        self.merge_status.set(f"PDF 생성 완료: {result} · 원본은 그대로 있습니다.")
+        messagebox.showinfo("PDF 생성 완료", f"새 PDF가 생성되었습니다.\n{result}")
+
+    def _finish_merge_error(self, error: str) -> None:
+        self.merge_button.configure(state="normal")
+        self.merge_status.set(f"PDF 생성 실패: {error}")
+        messagebox.showerror("PDF 생성 실패", error)
 
     # ----- PDF 분할 -----
 
