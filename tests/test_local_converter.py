@@ -1,3 +1,4 @@
+import subprocess
 import tempfile
 import unittest
 import sys
@@ -80,6 +81,63 @@ class LocalConverterTests(unittest.TestCase):
     def test_find_ms_office_is_false_without_winreg(self):
         with patch.dict(sys.modules, {"winreg": None}):
             self.assertFalse(local_converter.find_ms_office("word"))
+
+    def _completed(self, returncode=0, stdout=b"", stderr=b""):
+        return subprocess.CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr=stderr)
+
+    def test_convert_with_ms_office_runs_bridge_with_expected_arguments(self):
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "report.docx"
+            source.touch()
+            destination = Path(temp) / "report.pdf"
+
+            def fake_run(command, **kwargs):
+                destination.write_bytes(b"%PDF-1.4")
+                return self._completed()
+
+            with patch.object(local_converter, "OFFICE_BRIDGE_SCRIPT", Path(__file__)), \
+                 patch.object(local_converter.subprocess, "run", side_effect=fake_run) as run:
+                local_converter.convert_with_ms_office(source, destination, "word")
+                command = run.call_args.args[0]
+                self.assertEqual(command[:5], ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
+                self.assertEqual(command[5], str(local_converter.OFFICE_BRIDGE_SCRIPT))
+                self.assertEqual(command[command.index("-InputPath") + 1], str(source))
+                self.assertEqual(command[command.index("-OutputPath") + 1], str(destination))
+                self.assertEqual(command[command.index("-App") + 1], "word")
+                self.assertEqual(run.call_args.kwargs["timeout"], local_converter.MS_OFFICE_TIMEOUT)
+                self.assertTrue(run.call_args.kwargs["capture_output"])
+
+    def test_convert_with_ms_office_reports_bridge_stderr(self):
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "report.docx"
+            source.touch()
+            completed = self._completed(returncode=1, stderr="암호로 보호된 문서입니다".encode("utf-8"))
+            with patch.object(local_converter, "OFFICE_BRIDGE_SCRIPT", Path(__file__)), \
+                 patch.object(local_converter.subprocess, "run", return_value=completed):
+                with self.assertRaises(local_converter.ConversionError) as raised:
+                    local_converter.convert_with_ms_office(source, Path(temp) / "report.pdf", "word")
+            self.assertIn("암호로 보호된 문서입니다", str(raised.exception))
+
+    def test_convert_with_ms_office_reports_timeout(self):
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "report.docx"
+            source.touch()
+            error = subprocess.TimeoutExpired(cmd="powershell", timeout=300)
+            with patch.object(local_converter, "OFFICE_BRIDGE_SCRIPT", Path(__file__)), \
+                 patch.object(local_converter.subprocess, "run", side_effect=error):
+                with self.assertRaises(local_converter.ConversionError) as raised:
+                    local_converter.convert_with_ms_office(source, Path(temp) / "report.pdf", "word")
+            self.assertIn("300", str(raised.exception))
+
+    def test_convert_with_ms_office_reports_missing_output(self):
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "report.docx"
+            source.touch()
+            with patch.object(local_converter, "OFFICE_BRIDGE_SCRIPT", Path(__file__)), \
+                 patch.object(local_converter.subprocess, "run", return_value=self._completed()):
+                with self.assertRaises(local_converter.ConversionError) as raised:
+                    local_converter.convert_with_ms_office(source, Path(temp) / "report.pdf", "word")
+            self.assertIn("PDF", str(raised.exception))
 
 
 if __name__ == "__main__":

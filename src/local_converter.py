@@ -122,6 +122,30 @@ def convert_media(source: Path, destination: Path, overwrite: bool, compress: bo
     return destination
 
 
+def convert_with_ms_office(source: Path, destination: Path, app: str) -> None:
+    """Export a document to PDF with the installed Microsoft Office app via win_office.ps1."""
+    if not OFFICE_BRIDGE_SCRIPT.is_file():
+        raise ConversionError(f"Office 브리지 스크립트를 찾을 수 없습니다: {OFFICE_BRIDGE_SCRIPT}")
+    command = [
+        "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+        "-File", str(OFFICE_BRIDGE_SCRIPT),
+        "-InputPath", str(source), "-OutputPath", str(destination), "-App", app,
+    ]
+    try:
+        completed = subprocess.run(command, capture_output=True, timeout=MS_OFFICE_TIMEOUT)
+    except FileNotFoundError as exc:
+        raise ConversionError("PowerShell을 찾지 못했습니다. Windows에서 실행해야 합니다.") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise ConversionError(f"Microsoft Office 변환이 {MS_OFFICE_TIMEOUT}초 안에 끝나지 않았습니다. "
+                              "문서를 직접 열어 경고 창이 뜨는지 확인하세요.") from exc
+    if completed.returncode != 0:
+        detail = (completed.stderr or b"").decode("utf-8", "replace").strip() \
+            or (completed.stdout or b"").decode("utf-8", "replace").strip()
+        raise ConversionError(f"Microsoft Office 변환에 실패했습니다. {detail[:300]}".strip())
+    if not destination.is_file():
+        raise ConversionError("Microsoft Office가 PDF를 만들지 않았습니다.")
+
+
 def compress_pdf(source: Path, destination: Path, overwrite: bool, quality: str = "ebook") -> Path:
     ghostscript = find_ghostscript()
     if not ghostscript:
