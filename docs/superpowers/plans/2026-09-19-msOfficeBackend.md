@@ -277,6 +277,87 @@ git commit -m "feat: run win_office.ps1 bridge for Microsoft Office PDF export
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
 
+#### Task 2 보강: 타임아웃 시 Office 프로세스 정리
+
+리뷰에서 확인된 빈틈: `subprocess.run`의 타임아웃은 `powershell.exe`만 죽이므로, 브리지가 띄운 WINWORD/POWERPNT/EXCEL은 고아 프로세스로 남는다(ps1의 `finally`는 실행되지 않는다). 브리지는 COM 객체를 만든 직후 stdout에 `OFFICE_PID=<pid>` 한 줄을 출력하고(Task 4), Python은 타임아웃 시 부분 stdout에서 그 PID를 읽어 `taskkill`로 끝낸다.
+
+- [ ] **Step 6: 실패하는 테스트 작성**
+
+```python
+    def test_bridge_office_pid_parses_marker_line(self):
+        self.assertEqual(local_converter.bridge_office_pid(b"noise\r\nOFFICE_PID=4242\r\n"), 4242)
+        self.assertIsNone(local_converter.bridge_office_pid(b"no marker"))
+        self.assertIsNone(local_converter.bridge_office_pid(None))
+
+    def test_convert_with_ms_office_kills_office_process_on_timeout(self):
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "report.docx"
+            source.touch()
+            error = subprocess.TimeoutExpired(cmd="powershell", timeout=300, output=b"OFFICE_PID=4242\r\n")
+            calls = []
+
+            def fake_run(command, **kwargs):
+                calls.append(command)
+                if command[0] == "powershell":
+                    raise error
+                return self._completed()
+
+            with patch.object(local_converter, "OFFICE_BRIDGE_SCRIPT", Path(__file__)), \
+                 patch.object(local_converter.subprocess, "run", side_effect=fake_run):
+                with self.assertRaises(local_converter.ConversionError):
+                    local_converter.convert_with_ms_office(source, Path(temp) / "report.pdf", "word")
+            self.assertEqual(calls[1], ["taskkill", "/PID", "4242", "/T", "/F"])
+```
+
+- [ ] **Step 7: 실패 확인**
+
+Run: `python -m unittest tests.test_local_converter -v`
+Expected: 2개 ERROR — `AttributeError: ... has no attribute 'bridge_office_pid'`; 두 번째 테스트는 `IndexError`(taskkill 호출 없음) 또는 같은 AttributeError.
+
+- [ ] **Step 8: 구현**
+
+`src/local_converter.py` 상단 import에 `import re`를 추가하고, `convert_with_ms_office` 바로 위에 추가:
+
+```python
+OFFICE_PID_MARKER = re.compile(rb"^OFFICE_PID=(\d+)\s*$", re.MULTILINE)
+
+
+def bridge_office_pid(stdout: bytes | None) -> int | None:
+    """Read the Office process id that win_office.ps1 prints right after it launches the app."""
+    match = OFFICE_PID_MARKER.search(stdout or b"")
+    return int(match.group(1)) if match else None
+
+
+def kill_process_tree(pid: int) -> None:
+    subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True)
+```
+
+`convert_with_ms_office`의 `TimeoutExpired` 처리를 다음으로 교체:
+
+```python
+    except subprocess.TimeoutExpired as exc:
+        # powershell.exe 만 죽고 브리지가 띄운 Office 는 남으므로, 브리지가 알려준 PID 로 직접 끝낸다.
+        pid = bridge_office_pid(exc.stdout)
+        if pid:
+            kill_process_tree(pid)
+        raise ConversionError(f"Microsoft Office 변환이 {MS_OFFICE_TIMEOUT}초 안에 끝나지 않았습니다. "
+                              "문서를 직접 열어 경고 창이 뜨는지 확인하세요.") from exc
+```
+
+- [ ] **Step 9: 통과 확인**
+
+Run: `python -m unittest tests.test_local_converter -v`
+Expected: `Ran 14 tests` OK.
+
+- [ ] **Step 10: 커밋**
+
+```bash
+git add src/local_converter.py tests/test_local_converter.py
+git commit -m "fix: kill the Office process the bridge launched when the conversion times out
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+```
+
 ---
 
 ### Task 3: `convert_office` 분기 — LibreOffice 없으면 MS Office
@@ -462,18 +543,40 @@ param(
 # 원본은 읽기 전용으로만 열고, 어떤 경우에도 finally 에서 앱을 종료한다.
 
 $ErrorActionPreference = 'Stop'
+$processNames = @{ word = 'WINWORD'; powerpoint = 'POWERPNT'; excel = 'EXCEL' }
 $application = $null
 $document = $null
+$ownsApplication = $false
 $exitCode = 1
+
+function Get-OfficePids([string]$name) {
+    @(Get-Process -Name $name -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
+}
 
 try {
     # COM 은 현재 작업 폴더를 기준으로 상대 경로를 풀지 않으므로 절대 경로로 바꾼다.
     $inputFile = (Resolve-Path -LiteralPath $InputPath).Path
     $outputFile = [System.IO.Path]::GetFullPath($OutputPath)
 
+    # New-Object 가 새 프로세스를 만들었는지 프로세스 목록 차이로 알아낸다.
+    # Word/Excel 은 항상 새 인스턴스를 만들지만 PowerPoint 는 이미 떠 있는 인스턴스에 붙는다.
+    # 그 경우 사용자의 PowerPoint 를 Quit 하면 안 되므로 $ownsApplication 으로 구분한다.
+    $before = Get-OfficePids $processNames[$App]
+    switch ($App) {
+        'word' { $application = New-Object -ComObject Word.Application }
+        'powerpoint' { $application = New-Object -ComObject PowerPoint.Application }
+        'excel' { $application = New-Object -ComObject Excel.Application }
+    }
+    $launched = @(Get-OfficePids $processNames[$App] | Where-Object { $before -notcontains $_ })
+    $ownsApplication = $launched.Count -gt 0
+    if ($ownsApplication) {
+        # Python 이 타임아웃으로 이 스크립트를 죽일 때 이 PID 로 Office 를 정리한다.
+        [Console]::Out.WriteLine("OFFICE_PID=$($launched[0])")
+        [Console]::Out.Flush()
+    }
+
     switch ($App) {
         'word' {
-            $application = New-Object -ComObject Word.Application
             $application.Visible = $false
             $application.DisplayAlerts = 0          # wdAlertsNone
             # Open(FileName, ConfirmConversions, ReadOnly)
@@ -481,15 +584,14 @@ try {
             $document.ExportAsFixedFormat($outputFile, 17)   # wdExportFormatPDF
         }
         'powerpoint' {
-            $application = New-Object -ComObject PowerPoint.Application
             # PowerPoint 는 Visible=$false 설정이 예외를 내므로 WithWindow=$false 로 창만 숨긴다.
+            $previousAlerts = $application.DisplayAlerts
             $application.DisplayAlerts = 1          # ppAlertsNone
             # Open(FileName, ReadOnly, Untitled, WithWindow)
             $document = $application.Presentations.Open($inputFile, $true, $false, $false)
             $document.SaveAs($outputFile, 32)                # ppSaveAsPDF
         }
         'excel' {
-            $application = New-Object -ComObject Excel.Application
             $application.Visible = $false
             $application.DisplayAlerts = $false
             # Open(FileName, UpdateLinks, ReadOnly)
@@ -519,7 +621,12 @@ finally {
         [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($document)
     }
     if ($null -ne $application) {
-        try { $application.Quit() } catch {}
+        if ($ownsApplication) {
+            try { $application.Quit() } catch {}
+        } elseif ($App -eq 'powerpoint' -and $null -ne $previousAlerts) {
+            # 사용자의 PowerPoint 에 붙었던 경우: 종료하지 않고 바꾼 설정만 되돌린다.
+            try { $application.DisplayAlerts = $previousAlerts } catch {}
+        }
         [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($application)
     }
     [GC]::Collect()
@@ -528,6 +635,20 @@ finally {
 
 exit $exitCode
 ```
+
+브리지 stdout 규약: 새 Office 프로세스를 만들었으면 첫 줄에 `OFFICE_PID=<pid>`를 출력한다. Python 쪽(`bridge_office_pid`, Task 2 보강)이 타임아웃 때 이 값을 읽는다.
+
+- [ ] **Step 3b: 타임아웃 정리 수동 확인**
+
+PowerShell에서 스크립트를 직접 실행해 PID 줄이 나오는지 확인한다:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File src\win_office.ps1 -InputPath <scratch>\sample.docx -OutputPath <scratch>\pid_check.pdf -App word
+```
+
+Expected: 첫 줄 `OFFICE_PID=<숫자>`, 종료 코드 0, `pid_check.pdf` 생성, 이후 `Get-Process WINWORD`가 비어 있음.
+
+그리고 PowerPoint 싱글턴 보호를 확인한다: PowerPoint를 수동으로 먼저 열어둔 상태에서 `.pptx` 변환을 실행하면, 변환은 성공하고 사용자의 PowerPoint 창은 닫히지 않아야 하며 stdout에 `OFFICE_PID` 줄이 없어야 한다. 확인 후 PowerPoint를 닫는다. (자동 테스트 대상이 아니므로 결과를 보고서에 적는다.)
 
 - [ ] **Step 4: 통과 확인**
 
