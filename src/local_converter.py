@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -122,6 +123,19 @@ def convert_media(source: Path, destination: Path, overwrite: bool, compress: bo
     return destination
 
 
+OFFICE_PID_MARKER = re.compile(rb"^OFFICE_PID=(\d+)\s*$", re.MULTILINE)
+
+
+def bridge_office_pid(stdout: bytes | None) -> int | None:
+    """Read the Office process id that win_office.ps1 prints right after it launches the app."""
+    match = OFFICE_PID_MARKER.search(stdout or b"")
+    return int(match.group(1)) if match else None
+
+
+def kill_process_tree(pid: int) -> None:
+    subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True)
+
+
 def convert_with_ms_office(source: Path, destination: Path, app: str) -> None:
     """Export a document to PDF with the installed Microsoft Office app via win_office.ps1."""
     if not OFFICE_BRIDGE_SCRIPT.is_file():
@@ -136,6 +150,10 @@ def convert_with_ms_office(source: Path, destination: Path, app: str) -> None:
     except FileNotFoundError as exc:
         raise ConversionError("PowerShell을 찾지 못했습니다. Windows에서 실행해야 합니다.") from exc
     except subprocess.TimeoutExpired as exc:
+        # powershell.exe 만 죽고 브리지가 띄운 Office 는 남으므로, 브리지가 알려준 PID 로 직접 끝낸다.
+        pid = bridge_office_pid(exc.stdout)
+        if pid:
+            kill_process_tree(pid)
         raise ConversionError(f"Microsoft Office 변환이 {MS_OFFICE_TIMEOUT}초 안에 끝나지 않았습니다. "
                               "문서를 직접 열어 경고 창이 뜨는지 확인하세요.") from exc
     if completed.returncode != 0:

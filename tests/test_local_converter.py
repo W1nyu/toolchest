@@ -139,6 +139,30 @@ class LocalConverterTests(unittest.TestCase):
                     local_converter.convert_with_ms_office(source, Path(temp) / "report.pdf", "word")
             self.assertIn("PDF", str(raised.exception))
 
+    def test_bridge_office_pid_parses_marker_line(self):
+        self.assertEqual(local_converter.bridge_office_pid(b"noise\r\nOFFICE_PID=4242\r\n"), 4242)
+        self.assertIsNone(local_converter.bridge_office_pid(b"no marker"))
+        self.assertIsNone(local_converter.bridge_office_pid(None))
+
+    def test_convert_with_ms_office_kills_office_process_on_timeout(self):
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "report.docx"
+            source.touch()
+            error = subprocess.TimeoutExpired(cmd="powershell", timeout=300, output=b"OFFICE_PID=4242\r\n")
+            calls = []
+
+            def fake_run(command, **kwargs):
+                calls.append(command)
+                if command[0] == "powershell":
+                    raise error
+                return self._completed()
+
+            with patch.object(local_converter, "OFFICE_BRIDGE_SCRIPT", Path(__file__)), \
+                 patch.object(local_converter.subprocess, "run", side_effect=fake_run):
+                with self.assertRaises(local_converter.ConversionError):
+                    local_converter.convert_with_ms_office(source, Path(temp) / "report.pdf", "word")
+            self.assertEqual(calls[1], ["taskkill", "/PID", "4242", "/T", "/F"])
+
 
 if __name__ == "__main__":
     unittest.main()
