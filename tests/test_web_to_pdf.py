@@ -96,6 +96,36 @@ class WebToPdfTests(unittest.TestCase):
             ["https://www.catch.co.kr/News/RecruitNews/images/news.png"],
         )
 
+    @unittest.skipUnless(HAS_PARSER, "beautifulsoup4 is not installed")
+    def test_naver_blog_ignores_editor_comments_and_zero_width_lines(self):
+        # 네이버 스마트에디터는 문단마다 <!-- SE-TEXT { --> 주석을 넣고, 빈 줄에는
+        # 폭 없는 공백(U+200B)만 남긴다. 둘 다 본문으로 들어가면 안 된다.
+        page = """
+        <html><head><meta property="og:title" content="네이버 글 제목"></head><body>
+          <div class="se-main-container">
+            <div class="se-module se-module-text">
+              <!-- SE-TEXT { --><p class="se-text-paragraph"><span>안녕하세요 취준생 여러분!</span></p><!-- } SE-TEXT -->
+              <!-- SE-TEXT { --><p class="se-text-paragraph"><span>\u200b</span></p><!-- } SE-TEXT -->
+              <!-- SE-TEXT { --><p class="se-text-paragraph"><span>두 번째 문단</span></p><!-- } SE-TEXT -->
+            </div>
+            <div class="se-module se-module-image">
+              <img src="https://mblogthumb-phinf.pstatic.net/a.png?type=w800" data-lazy-src="https://mblogthumb-phinf.pstatic.net/a.png?type=w800" class="se-image-resource">
+            </div>
+          </div>
+          <div class="comment">댓글 3개</div>
+        </body></html>
+        """
+        article = web_to_pdf.extract_article(page, "https://m.blog.naver.com/cheerup0711/223805072109")
+        self.assertEqual(article.title, "네이버 글 제목")
+        self.assertEqual(
+            [block.text for block in article.blocks if isinstance(block, web_to_pdf.TextBlock)],
+            ["안녕하세요 취준생 여러분!", "두 번째 문단"],
+        )
+        self.assertEqual(
+            [block.url for block in article.blocks if isinstance(block, web_to_pdf.ImageBlock)],
+            ["https://mblogthumb-phinf.pstatic.net/a.png?type=w800"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -29,9 +29,10 @@ except ImportError:  # pragma: no cover - exercised by the runtime error path
 
 try:
     from bs4 import BeautifulSoup, NavigableString, Tag
+    from bs4.element import PreformattedString
 except ImportError:  # pragma: no cover - exercised by the runtime error path
     BeautifulSoup = None  # type: ignore[assignment,misc]
-    NavigableString = Tag = Any  # type: ignore[assignment,misc]
+    NavigableString = PreformattedString = Tag = Any  # type: ignore[assignment,misc]
 
 try:
     from PIL import Image as PillowImage
@@ -352,7 +353,9 @@ def _image_source(tag: Any, base_url: str) -> str | None:
 
 def _clean_lines(raw: str) -> Iterable[str]:
     for line in raw.replace("\r", "").split("\n"):
-        cleaned = re.sub(r"[\t \f\v]+", " ", line).strip()
+        # 폭 없는 공백(U+200B 등)은 네이버 에디터가 빈 줄 자리에 넣는 값이라
+        # 일반 공백처럼 지운다.
+        cleaned = re.sub(r"[\t \f\v\u200b\u200c\u200d\ufeff]+", " ", line).strip()
         if cleaned:
             yield cleaned
 
@@ -368,7 +371,10 @@ def _blocks_from_root(root: Any, base_url: str) -> tuple[TextBlock | ImageBlock,
 
     def walk(node: Any) -> None:
         if isinstance(node, NavigableString):
-            text_buffer.append(str(node))
+            # 주석·CDATA·선언은 NavigableString의 하위 타입이다. 네이버 스마트에디터는
+            # 문단마다 <!-- SE-TEXT { --> 주석을 넣으므로 본문에서 걸러내야 한다.
+            if not isinstance(node, PreformattedString):
+                text_buffer.append(str(node))
             return
         if not isinstance(node, Tag):
             return
