@@ -215,16 +215,22 @@ def convert_pdf_to_images(source: Path, output_dir: Path | None, image_format: s
 
 def convert_office(source: Path, destination: Path, overwrite: bool, compress: bool = False, quality: str = "ebook") -> Path:
     soffice = find_libreoffice()
-    if not soffice:
-        raise ConversionError("LibreOffice was not found. Install it from https://www.libreoffice.org/download/download/.")
+    ms_app = None if soffice else ms_office_app_for(source.suffix)
+    if not soffice and not (ms_app and find_ms_office(ms_app)):
+        raise ConversionError(
+            "Office 문서를 PDF로 바꾸려면 LibreOffice 또는 Microsoft Office(Word/PowerPoint/Excel)가 필요합니다. "
+            "LibreOffice: https://www.libreoffice.org/download/download/")
     destination.parent.mkdir(parents=True, exist_ok=True)
     temp_dir = destination.parent / f".conversion_{source.stem}"
     temp_dir.mkdir(parents=True, exist_ok=True)
     try:
-        run_command([soffice, "--headless", "--convert-to", "pdf", "--outdir", str(temp_dir), str(source)])
         generated = temp_dir / f"{source.stem}.pdf"
-        if not generated.exists():
-            raise ConversionError("LibreOffice did not create a PDF file.")
+        if soffice:
+            run_command([soffice, "--headless", "--convert-to", "pdf", "--outdir", str(temp_dir), str(source)])
+            if not generated.exists():
+                raise ConversionError("LibreOffice did not create a PDF file.")
+        else:
+            convert_with_ms_office(source, generated, ms_app)
         if destination.exists() and not overwrite:
             raise ConversionError(f"Output already exists: {destination} (use --overwrite to replace it)")
         if destination.exists():

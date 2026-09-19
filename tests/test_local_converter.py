@@ -180,6 +180,55 @@ class LocalConverterTests(unittest.TestCase):
                     local_converter.convert_with_ms_office(source, Path(temp) / "report.pdf", "word")
             self.assertIn("300", str(raised.exception))
 
+    def test_convert_office_falls_back_to_ms_office(self):
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "report.docx"
+            source.touch()
+            destination = Path(temp) / "out" / "report.pdf"
+
+            def fake_bridge(src, dst, app):
+                self.assertEqual(src, source)
+                self.assertEqual(app, "word")
+                self.assertEqual(dst, destination.parent / ".conversion_report" / "report.pdf")
+                dst.write_bytes(b"%PDF-1.4")
+
+            with patch.object(local_converter, "find_libreoffice", return_value=None), \
+                 patch.object(local_converter, "find_ms_office", return_value=True), \
+                 patch.object(local_converter, "convert_with_ms_office", side_effect=fake_bridge) as bridge:
+                result = local_converter.convert_office(source, destination, overwrite=False)
+            bridge.assert_called_once()
+            self.assertEqual(result, destination)
+            self.assertEqual(destination.read_bytes(), b"%PDF-1.4")
+            self.assertFalse((destination.parent / ".conversion_report").exists())
+
+    def test_convert_office_prefers_libreoffice_when_available(self):
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "report.docx"
+            source.touch()
+            destination = Path(temp) / "report.pdf"
+
+            def fake_soffice(command):
+                Path(command[command.index("--outdir") + 1], "report.pdf").write_bytes(b"%PDF-1.4")
+
+            with patch.object(local_converter, "find_libreoffice", return_value="soffice"), \
+                 patch.object(local_converter, "run_command", side_effect=fake_soffice), \
+                 patch.object(local_converter, "convert_with_ms_office") as bridge:
+                local_converter.convert_office(source, destination, overwrite=False)
+            bridge.assert_not_called()
+            self.assertTrue(destination.is_file())
+
+    def test_convert_office_explains_when_no_engine_is_installed(self):
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "report.docx"
+            source.touch()
+            with patch.object(local_converter, "find_libreoffice", return_value=None), \
+                 patch.object(local_converter, "find_ms_office", return_value=False):
+                with self.assertRaises(local_converter.ConversionError) as raised:
+                    local_converter.convert_office(source, Path(temp) / "report.pdf", overwrite=False)
+            message = str(raised.exception)
+            self.assertIn("LibreOffice", message)
+            self.assertIn("Microsoft Office", message)
+
 
 if __name__ == "__main__":
     unittest.main()
