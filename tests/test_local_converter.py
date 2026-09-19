@@ -229,6 +229,23 @@ class LocalConverterTests(unittest.TestCase):
             self.assertIn("LibreOffice", message)
             self.assertIn("Microsoft Office", message)
 
+    def test_word_bridge_exports_real_docx(self):
+        if not local_converter.find_ms_office("word"):
+            self.skipTest("Microsoft Word is not installed")
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "sample.docx"
+            make_docx = (
+                "$w = New-Object -ComObject Word.Application; $w.Visible = $false; "
+                "$d = $w.Documents.Add(); $d.Content.Text = 'bridge test 한글'; "
+                f"$d.SaveAs2('{source}', 16); $d.Close(0); $w.Quit()"
+            )
+            subprocess.run(["powershell", "-NoProfile", "-Command", make_docx],
+                           check=True, capture_output=True, timeout=120)
+            with patch.object(local_converter, "find_libreoffice", return_value=None):
+                result = local_converter.convert(source, "pdf", Path(temp) / "out", overwrite=True)
+            self.assertEqual(result, Path(temp) / "out" / "sample.pdf")
+            self.assertTrue(result.read_bytes().startswith(b"%PDF"))
+
 
 if __name__ == "__main__":
     unittest.main()
