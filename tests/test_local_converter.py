@@ -41,6 +41,46 @@ class LocalConverterTests(unittest.TestCase):
                 local_converter.convert(source, "custom-output", Path(temp), True)
             self.assertEqual(run.call_args.args[0][-1], str(Path(temp) / "custom.custom-output"))
 
+    def test_office_extensions_match_ms_office_app_mapping(self):
+        mapped = set().union(*local_converter.MS_OFFICE_APPS.values())
+        self.assertEqual(mapped, local_converter.OFFICE_EXTENSIONS)
+
+    def test_ms_office_app_for_maps_each_family(self):
+        self.assertEqual(local_converter.ms_office_app_for(".docx"), "word")
+        self.assertEqual(local_converter.ms_office_app_for(".rtf"), "word")
+        self.assertEqual(local_converter.ms_office_app_for(".PPTX"), "powerpoint")
+        self.assertEqual(local_converter.ms_office_app_for(".odp"), "powerpoint")
+        self.assertEqual(local_converter.ms_office_app_for(".xlsx"), "excel")
+        self.assertEqual(local_converter.ms_office_app_for(".csv"), "excel")
+        self.assertIsNone(local_converter.ms_office_app_for(".mp4"))
+
+    def test_find_ms_office_checks_progid_in_registry(self):
+        import types
+        opened = []
+
+        class Key:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+        def open_key(root, name):
+            opened.append(name)
+            if name == "Word.Application":
+                return Key()
+            raise OSError("missing")
+
+        fake_winreg = types.SimpleNamespace(HKEY_CLASSES_ROOT=object(), OpenKey=open_key)
+        with patch.dict(sys.modules, {"winreg": fake_winreg}):
+            self.assertTrue(local_converter.find_ms_office("word"))
+            self.assertFalse(local_converter.find_ms_office("excel"))
+        self.assertEqual(opened, ["Word.Application", "Excel.Application"])
+
+    def test_find_ms_office_is_false_without_winreg(self):
+        with patch.dict(sys.modules, {"winreg": None}):
+            self.assertFalse(local_converter.find_ms_office("word"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -10,6 +10,14 @@ import sys
 from pathlib import Path
 
 OFFICE_EXTENSIONS = {".doc", ".docx", ".odt", ".rtf", ".ppt", ".pptx", ".odp", ".xls", ".xlsx", ".ods", ".csv"}
+MS_OFFICE_APPS = {
+    "word": {".doc", ".docx", ".odt", ".rtf"},
+    "powerpoint": {".ppt", ".pptx", ".odp"},
+    "excel": {".xls", ".xlsx", ".ods", ".csv"},
+}
+MS_OFFICE_PROGIDS = {"word": "Word.Application", "powerpoint": "PowerPoint.Application", "excel": "Excel.Application"}
+OFFICE_BRIDGE_SCRIPT = Path(__file__).with_name("win_office.ps1")
+MS_OFFICE_TIMEOUT = 300
 AUDIO_EXTENSIONS = {".mp3", ".m4a", ".wav", ".flac", ".aac", ".ogg", ".opus"}
 
 
@@ -34,6 +42,27 @@ def find_libreoffice() -> str | None:
         if candidate.is_file():
             return str(candidate)
     return None
+
+
+def ms_office_app_for(suffix: str) -> str | None:
+    """Return which Microsoft Office application opens files with this extension."""
+    for app, extensions in MS_OFFICE_APPS.items():
+        if suffix.lower() in extensions:
+            return app
+    return None
+
+
+def find_ms_office(app: str) -> bool:
+    """Check whether the Office application's COM ProgID is registered, without launching it."""
+    try:
+        import winreg
+    except ImportError:
+        return False
+    try:
+        with winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, MS_OFFICE_PROGIDS[app]):
+            return True
+    except OSError:
+        return False
 
 
 def find_ghostscript() -> str | None:
