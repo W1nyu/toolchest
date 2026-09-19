@@ -182,7 +182,8 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
                 destination.write_bytes(b"%PDF-1.4")
                 return self._completed()
 
-            with patch.object(local_converter, "OFFICE_BRIDGE_SCRIPT", Path(__file__)), \n                 patch.object(local_converter.subprocess, "run", side_effect=fake_run) as run:
+            with patch.object(local_converter, "OFFICE_BRIDGE_SCRIPT", Path(__file__)), \
+                 patch.object(local_converter.subprocess, "run", side_effect=fake_run) as run:
                 local_converter.convert_with_ms_office(source, destination, "word")
             command = run.call_args.args[0]
             self.assertEqual(command[:5], ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
@@ -198,7 +199,8 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
             source = Path(temp) / "report.docx"
             source.touch()
             completed = self._completed(returncode=1, stderr="암호로 보호된 문서입니다".encode("utf-8"))
-            with patch.object(local_converter, "OFFICE_BRIDGE_SCRIPT", Path(__file__)), \n                 patch.object(local_converter.subprocess, "run", return_value=completed):
+            with patch.object(local_converter, "OFFICE_BRIDGE_SCRIPT", Path(__file__)), \
+                 patch.object(local_converter.subprocess, "run", return_value=completed):
                 with self.assertRaises(local_converter.ConversionError) as raised:
                     local_converter.convert_with_ms_office(source, Path(temp) / "report.pdf", "word")
             self.assertIn("암호로 보호된 문서입니다", str(raised.exception))
@@ -208,7 +210,8 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
             source = Path(temp) / "report.docx"
             source.touch()
             error = subprocess.TimeoutExpired(cmd="powershell", timeout=300)
-            with patch.object(local_converter, "OFFICE_BRIDGE_SCRIPT", Path(__file__)), \n                 patch.object(local_converter.subprocess, "run", side_effect=error):
+            with patch.object(local_converter, "OFFICE_BRIDGE_SCRIPT", Path(__file__)), \
+                 patch.object(local_converter.subprocess, "run", side_effect=error):
                 with self.assertRaises(local_converter.ConversionError) as raised:
                     local_converter.convert_with_ms_office(source, Path(temp) / "report.pdf", "word")
             self.assertIn("300", str(raised.exception))
@@ -217,7 +220,8 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
         with tempfile.TemporaryDirectory() as temp:
             source = Path(temp) / "report.docx"
             source.touch()
-            with patch.object(local_converter, "OFFICE_BRIDGE_SCRIPT", Path(__file__)), \n                 patch.object(local_converter.subprocess, "run", return_value=self._completed()):
+            with patch.object(local_converter, "OFFICE_BRIDGE_SCRIPT", Path(__file__)), \
+                 patch.object(local_converter.subprocess, "run", return_value=self._completed()):
                 with self.assertRaises(local_converter.ConversionError) as raised:
                     local_converter.convert_with_ms_office(source, Path(temp) / "report.pdf", "word")
             self.assertIn("PDF", str(raised.exception))
