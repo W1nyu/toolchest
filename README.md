@@ -5,8 +5,8 @@
 ## 폴더 구조
 
 ~~~text
+로컬_변환기_실행.bat  Windows GUI 실행 스크립트
 src/            실행 코드와 Windows OCR 브리지
-scripts/        Windows 실행 스크립트
 tests/          자동 테스트
 docs/guides/    도구별 HTML 사용 가이드
 docs/design/    디자인 참고 자료
@@ -47,7 +47,7 @@ FFmpeg와 LibreOffice를 설치한 뒤 새 터미널을 열어주세요. 프로�
 
 ## GUI 실행
 
-Windows에서 `scripts/로컬_변환기_실행.bat`을 더블클릭하거나 다음 명령을 실행합니다.
+Windows에서 프로젝트 루트의 `로컬_변환기_실행.bat`을 더블클릭하거나 다음 명령을 실행합니다.
 
 ```powershell
 python src/converter_gui.py
