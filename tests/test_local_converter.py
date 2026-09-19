@@ -10,6 +10,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import local_converter
 
 
+def make_docx_with_word(path: Path, text: str) -> None:
+    script = (
+        "$w = New-Object -ComObject Word.Application; $w.Visible = $false; "
+        "try { $d = $w.Documents.Add(); $d.Content.Text = '" + text + "'; "
+        f"$d.SaveAs2('{path}', 16); $d.Close(0) }} finally {{ $w.Quit() }}"
+    )
+    subprocess.run(["powershell", "-NoProfile", "-Command", script],
+                   check=True, capture_output=True, timeout=120)
+
+
 class LocalConverterTests(unittest.TestCase):
     def test_output_path_uses_input_stem_and_target_extension(self):
         source = Path("C:/work/my video.mp4")
@@ -234,17 +244,30 @@ class LocalConverterTests(unittest.TestCase):
             self.skipTest("Microsoft Word is not installed")
         with tempfile.TemporaryDirectory() as temp:
             source = Path(temp) / "sample.docx"
-            make_docx = (
-                "$w = New-Object -ComObject Word.Application; $w.Visible = $false; "
-                "$d = $w.Documents.Add(); $d.Content.Text = 'bridge test 한글'; "
-                f"$d.SaveAs2('{source}', 16); $d.Close(0); $w.Quit()"
-            )
-            subprocess.run(["powershell", "-NoProfile", "-Command", make_docx],
-                           check=True, capture_output=True, timeout=120)
+            make_docx_with_word(source, "bridge test 한글")
             with patch.object(local_converter, "find_libreoffice", return_value=None):
                 result = local_converter.convert(source, "pdf", Path(temp) / "out", overwrite=True)
             self.assertEqual(result, Path(temp) / "out" / "sample.pdf")
             self.assertTrue(result.read_bytes().startswith(b"%PDF"))
+
+    def test_word_bridge_reports_readable_error_for_broken_file(self):
+        if not local_converter.find_ms_office("word"):
+            self.skipTest("Microsoft Word is not installed")
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "broken.docx"
+            source.write_bytes(b"this is not a docx file")
+            with patch.object(local_converter, "find_libreoffice", return_value=None):
+                with self.assertRaises(local_converter.ConversionError) as raised:
+                    local_converter.convert(source, "pdf", Path(temp) / "out", overwrite=True)
+            message = str(raised.exception)
+            self.assertIn("Microsoft Office", message)
+            self.assertNotIn("�", message)
+            self.assertGreater(len(message), len("Microsoft Office 변환에 실패했습니다."))
+        leftover = subprocess.run(
+            ["powershell", "-NoProfile", "-Command",
+             "(Get-Process WINWORD -ErrorAction SilentlyContinue).Count"],
+            capture_output=True, text=True, timeout=60).stdout.strip()
+        self.assertIn(leftover, {"", "0"})
 
 
 if __name__ == "__main__":

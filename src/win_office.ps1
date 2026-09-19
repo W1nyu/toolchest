@@ -8,6 +8,8 @@
 # 원본은 읽기 전용으로만 열고, 어떤 경우에도 finally 에서 앱을 종료한다.
 
 $ErrorActionPreference = 'Stop'
+# Python 쪽은 stdout/stderr 를 UTF-8 로 읽는다. 기본 OEM 코드페이지(cp949)면 한글 오류 메시지가 깨진다.
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $processNames = @{ word = 'WINWORD'; powerpoint = 'POWERPNT'; excel = 'EXCEL' }
 $application = $null
 $document = $null
@@ -44,8 +46,8 @@ try {
         'word' {
             $application.Visible = $false
             $application.DisplayAlerts = 0          # wdAlertsNone
-            # Open(FileName, ConfirmConversions, ReadOnly)
-            $document = $application.Documents.Open($inputFile, $false, $true)
+            # Open(FileName, ConfirmConversions, ReadOnly, AddToRecentFiles)
+            $document = $application.Documents.Open($inputFile, $false, $true, $false)
             $document.ExportAsFixedFormat($outputFile, 17)   # wdExportFormatPDF
         }
         'powerpoint' {
@@ -83,7 +85,7 @@ finally {
                 'excel' { $document.Close($false) }
             }
         } catch {}
-        [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($document)
+        try { [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($document) } catch {}
     }
     if ($null -ne $application) {
         if ($ownsApplication) {
@@ -92,7 +94,7 @@ finally {
             # 사용자의 PowerPoint 에 붙었던 경우: 종료하지 않고 바꾼 설정만 되돌린다.
             try { $application.DisplayAlerts = $previousAlerts } catch {}
         }
-        [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($application)
+        try { [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($application) } catch {}
     }
     [GC]::Collect()
     [GC]::WaitForPendingFinalizers()
