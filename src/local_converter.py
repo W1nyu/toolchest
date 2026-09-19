@@ -133,7 +133,11 @@ def bridge_office_pid(stdout: bytes | None) -> int | None:
 
 
 def kill_process_tree(pid: int) -> None:
-    subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True)
+    """Best-effort cleanup: never let a failed taskkill replace the caller's own error."""
+    try:
+        subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        pass
 
 
 def convert_with_ms_office(source: Path, destination: Path, app: str) -> None:

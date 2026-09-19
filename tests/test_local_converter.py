@@ -163,6 +163,23 @@ class LocalConverterTests(unittest.TestCase):
                     local_converter.convert_with_ms_office(source, Path(temp) / "report.pdf", "word")
             self.assertEqual(calls[1], ["taskkill", "/PID", "4242", "/T", "/F"])
 
+    def test_timeout_cleanup_failure_still_raises_conversion_error(self):
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "report.docx"
+            source.touch()
+            error = subprocess.TimeoutExpired(cmd="powershell", timeout=300, output=b"OFFICE_PID=4242\r\n")
+
+            def fake_run(command, **kwargs):
+                if command[0] == "powershell":
+                    raise error
+                raise FileNotFoundError("taskkill")
+
+            with patch.object(local_converter, "OFFICE_BRIDGE_SCRIPT", Path(__file__)), \
+                 patch.object(local_converter.subprocess, "run", side_effect=fake_run):
+                with self.assertRaises(local_converter.ConversionError) as raised:
+                    local_converter.convert_with_ms_office(source, Path(temp) / "report.pdf", "word")
+            self.assertIn("300", str(raised.exception))
+
 
 if __name__ == "__main__":
     unittest.main()
