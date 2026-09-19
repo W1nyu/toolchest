@@ -15,7 +15,7 @@ from PIL import Image, ImageTk
 
 from image_to_pdf import build_searchable_pdf
 from image_to_text import OcrError, image_from_clipboard, image_to_text, load_image
-from local_converter import ConversionError, convert
+from local_converter import OFFICE_EXTENSIONS, ConversionError, convert
 from web_to_pdf import WebPdfError, webpage_to_pdf
 from page_picker import PagePicker
 from pdf_pages import PdfPagesError, merge_pdfs, merged_name, pdf_page_count, split_name, split_pdf
@@ -283,7 +283,7 @@ class ConverterApp(tk.Tk):
         if path:
             self.input_path.set(path)
             suffix = Path(path).suffix.lower()
-            if suffix in {".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx", ".odt", ".odp", ".ods"}:
+            if suffix in OFFICE_EXTENSIONS:
                 self.target_format.set("pdf")
             if not self.output_dir.get():
                 self.output_dir.set(str(Path(path).parent))

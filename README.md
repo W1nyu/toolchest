@@ -17,7 +17,7 @@ output/         생성된 결과물 (Git 추적 제외)
 ## 지원 범위
 
 - 미디어: FFmpeg가 지원하는 모든 입력/출력 형식. 하드코딩된 확장자 목록으로 제한하지 않으므로 FFmpeg 버전에 포함된 형식을 그대로 사용할 수 있습니다.
-- 문서: DOC/DOCX, PPT/PPTX, XLS/XLSX, ODT/ODP/ODS, RTF/CSV -> PDF (LibreOffice 필요)
+- 문서: DOC/DOCX, PPT/PPTX, XLS/XLSX, ODT/ODP/ODS, RTF/CSV -> PDF (LibreOffice 또는 Microsoft Office 필요)
 - EXE/BAT도 파일 선택 창에서 선택할 수 있습니다. 다만 변환 자체는 FFmpeg가 해당 파일을 미디어로 해석할 수 있을 때만 가능합니다.
 - PDF 압축: Ghostscript의 `screen`/`ebook`/`printer` 품질을 지원합니다.
 - PDF -> JPG/PNG: 여러 페이지를 페이지별 이미지로 자동 저장합니다. 기본 해상도는 150 DPI입니다.
@@ -31,7 +31,7 @@ output/         생성된 결과물 (Git 추적 제외)
 Python 3.10 이상과 다음 프로그램을 설치하세요.
 
 1. [FFmpeg](https://ffmpeg.org/download.html): 미디어 변환용
-2. [LibreOffice](https://www.libreoffice.org/download/download/): Office 문서 -> PDF용
+2. [LibreOffice](https://www.libreoffice.org/download/download/) 또는 Microsoft Office(Word/PowerPoint/Excel): Office 문서 -> PDF용. 둘 다 있으면 LibreOffice를 먼저 사용합니다.
 
 웹 본문 PDF와 PDF 합치기·분할 기능에는 아래 Python 패키지도 필요합니다.
 
@@ -41,7 +41,7 @@ python -m pip install -r requirements.txt
 
 캣치처럼 본문을 자바스크립트로 나중에 채우는 사이트는 PC에 설치된 Microsoft Edge 또는 Google Chrome을 백그라운드로 잠시 사용합니다. Windows 기본 Edge가 있으면 별도 설치가 필요 없습니다.
 
-FFmpeg와 LibreOffice를 설치한 뒤 새 터미널을 열어주세요. 프로그램이 PATH에 없어도 LibreOffice의 기본 Windows 설치 경로는 자동으로 확인합니다.
+FFmpeg와 LibreOffice를 설치한 뒤 새 터미널을 열어주세요. 프로그램이 PATH에 없어도 LibreOffice의 기본 Windows 설치 경로는 자동으로 확인합니다. LibreOffice가 없으면 설치된 Microsoft Office를 백그라운드로 잠시 실행해 PDF를 만듭니다.
 
 이미지 텍스트 기능은 Windows 내장 OCR(Windows.Media.Ocr)만 사용하므로 별도 프로그램 설치가 필요 없습니다. 다만 한국어 인식기가 없다면 설정 → 시간 및 언어 → 언어 및 지역 → 한국어의 언어 옵션에서 `광학 문자 인식`을 설치하세요.
 

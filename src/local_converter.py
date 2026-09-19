@@ -4,12 +4,21 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 OFFICE_EXTENSIONS = {".doc", ".docx", ".odt", ".rtf", ".ppt", ".pptx", ".odp", ".xls", ".xlsx", ".ods", ".csv"}
+MS_OFFICE_APPS = {
+    "word": {".doc", ".docx", ".odt", ".rtf"},
+    "powerpoint": {".ppt", ".pptx", ".odp"},
+    "excel": {".xls", ".xlsx", ".ods", ".csv"},
+}
+MS_OFFICE_PROGIDS = {"word": "Word.Application", "powerpoint": "PowerPoint.Application", "excel": "Excel.Application"}
+OFFICE_BRIDGE_SCRIPT = Path(__file__).with_name("win_office.ps1")
+MS_OFFICE_TIMEOUT = 300
 AUDIO_EXTENSIONS = {".mp3", ".m4a", ".wav", ".flac", ".aac", ".ogg", ".opus"}
 
 
@@ -34,6 +43,27 @@ def find_libreoffice() -> str | None:
         if candidate.is_file():
             return str(candidate)
     return None
+
+
+def ms_office_app_for(suffix: str) -> str | None:
+    """Return which Microsoft Office application opens files with this extension."""
+    for app, extensions in MS_OFFICE_APPS.items():
+        if suffix.lower() in extensions:
+            return app
+    return None
+
+
+def find_ms_office(app: str) -> bool:
+    """Check whether the Office application's COM ProgID is registered, without launching it."""
+    try:
+        import winreg
+    except ImportError:
+        return False
+    try:
+        with winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, MS_OFFICE_PROGIDS[app]):
+            return True
+    except OSError:
+        return False
 
 
 def find_ghostscript() -> str | None:
@@ -93,6 +123,51 @@ def convert_media(source: Path, destination: Path, overwrite: bool, compress: bo
     return destination
 
 
+OFFICE_PID_MARKER = re.compile(rb"^OFFICE_PID=(\d+)\s*$", re.MULTILINE)
+
+
+def bridge_office_pid(stdout: bytes | None) -> int | None:
+    """Read the Office process id that win_office.ps1 prints right after it launches the app."""
+    match = OFFICE_PID_MARKER.search(stdout or b"")
+    return int(match.group(1)) if match else None
+
+
+def kill_process_tree(pid: int) -> None:
+    """Best-effort cleanup: never let a failed taskkill replace the caller's own error."""
+    try:
+        subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def convert_with_ms_office(source: Path, destination: Path, app: str) -> None:
+    """Export a document to PDF with the installed Microsoft Office app via win_office.ps1."""
+    if not OFFICE_BRIDGE_SCRIPT.is_file():
+        raise ConversionError(f"Office 브리지 스크립트를 찾을 수 없습니다: {OFFICE_BRIDGE_SCRIPT}")
+    command = [
+        "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+        "-File", str(OFFICE_BRIDGE_SCRIPT),
+        "-InputPath", str(source), "-OutputPath", str(destination), "-App", app,
+    ]
+    try:
+        completed = subprocess.run(command, capture_output=True, timeout=MS_OFFICE_TIMEOUT)
+    except FileNotFoundError as exc:
+        raise ConversionError("PowerShell을 찾지 못했습니다. Windows에서 실행해야 합니다.") from exc
+    except subprocess.TimeoutExpired as exc:
+        # powershell.exe 만 죽고 브리지가 띄운 Office 는 남으므로, 브리지가 알려준 PID 로 직접 끝낸다.
+        pid = bridge_office_pid(exc.stdout)
+        if pid:
+            kill_process_tree(pid)
+        raise ConversionError(f"Microsoft Office 변환이 {MS_OFFICE_TIMEOUT}초 안에 끝나지 않았습니다. "
+                              "문서를 직접 열어 경고 창이 뜨는지 확인하세요.") from exc
+    if completed.returncode != 0:
+        detail = (completed.stderr or b"").decode("utf-8", "replace").strip() \
+            or (completed.stdout or b"").decode("utf-8", "replace").strip()
+        raise ConversionError(f"Microsoft Office 변환에 실패했습니다. {detail[:300]}".strip())
+    if not destination.is_file():
+        raise ConversionError("Microsoft Office가 PDF를 만들지 않았습니다.")
+
+
 def compress_pdf(source: Path, destination: Path, overwrite: bool, quality: str = "ebook") -> Path:
     ghostscript = find_ghostscript()
     if not ghostscript:
@@ -140,16 +215,22 @@ def convert_pdf_to_images(source: Path, output_dir: Path | None, image_format: s
 
 def convert_office(source: Path, destination: Path, overwrite: bool, compress: bool = False, quality: str = "ebook") -> Path:
     soffice = find_libreoffice()
-    if not soffice:
-        raise ConversionError("LibreOffice was not found. Install it from https://www.libreoffice.org/download/download/.")
+    ms_app = None if soffice else ms_office_app_for(source.suffix)
+    if not soffice and not (ms_app and find_ms_office(ms_app)):
+        raise ConversionError(
+            "Office 문서를 PDF로 바꾸려면 LibreOffice 또는 Microsoft Office(Word/PowerPoint/Excel)가 필요합니다. "
+            "LibreOffice: https://www.libreoffice.org/download/download/")
     destination.parent.mkdir(parents=True, exist_ok=True)
     temp_dir = destination.parent / f".conversion_{source.stem}"
     temp_dir.mkdir(parents=True, exist_ok=True)
     try:
-        run_command([soffice, "--headless", "--convert-to", "pdf", "--outdir", str(temp_dir), str(source)])
         generated = temp_dir / f"{source.stem}.pdf"
-        if not generated.exists():
-            raise ConversionError("LibreOffice did not create a PDF file.")
+        if soffice:
+            run_command([soffice, "--headless", "--convert-to", "pdf", "--outdir", str(temp_dir), str(source)])
+            if not generated.exists():
+                raise ConversionError("LibreOffice did not create a PDF file.")
+        else:
+            convert_with_ms_office(source, generated, ms_app)
         if destination.exists() and not overwrite:
             raise ConversionError(f"Output already exists: {destination} (use --overwrite to replace it)")
         if destination.exists():
